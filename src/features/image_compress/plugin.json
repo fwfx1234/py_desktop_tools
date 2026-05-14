@@ -1,0 +1,28 @@
+{
+  "id": "image-compress",
+  "name": "图片压缩",
+  "version": "1.0.0",
+  "description": "PNG/JPEG/WebP 批量压缩",
+  "icon": "qta:mdi6.image-size-select-large",
+  "entrypoint": "runtime:create_runtime",
+  "qmlPage": "ImageCompressPage.qml",
+  "contextProperty": "imageCompressVm",
+  "category": "tool",
+  "order": 0,
+  "commands": [
+    {
+      "id": "image-compress.open",
+      "title": "图片压缩",
+      "subtitle": "PNG/JPEG/WebP 批量压缩",
+      "icon": "qta:mdi6.image-size-select-large",
+      "keywords": ["图片", "压缩", "image", "compress", "png", "jpg", "jpeg", "webp"],
+      "prefixes": ["img", "image"],
+      "launchMode": "inline_view",
+      "matchers": [
+        {"source": "input", "kind": "image_file", "boost": 180},
+        {"source": "clipboard", "kind": "image", "boost": 160},
+        {"source": "clipboard", "kind": "image_file", "boost": 130}
+      ]
+    }
+  ]
+}

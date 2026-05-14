@@ -1,0 +1,22 @@
+{
+  "id": "about",
+  "name": "关于",
+  "version": "1.0.0",
+  "description": "桌面工具箱版本信息",
+  "icon": "about",
+  "entrypoint": "runtime:create_about_runtime",
+  "qmlPage": "AboutPage.qml",
+  "category": "about",
+  "order": 9,
+  "commands": [
+    {
+      "id": "about.open",
+      "title": "关于",
+      "subtitle": "桌面工具箱版本信息",
+      "icon": "about",
+      "keywords": ["关于", "about", "版本", "version"],
+      "prefixes": ["about"],
+      "launchMode": "inline_view"
+    }
+  ]
+}

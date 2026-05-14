@@ -1,0 +1,27 @@
+{
+  "id": "packet-capture",
+  "name": "抓包工具",
+  "version": "1.0.0",
+  "description": "HTTP 请求捕获与分析",
+  "icon": "capture",
+  "entrypoint": "runtime:create_runtime",
+  "qmlPage": "PacketCapturePage.qml",
+  "contextProperty": "packetCaptureVm",
+  "category": "tool",
+  "order": 5,
+  "commands": [
+    {
+      "id": "packet-capture.open",
+      "title": "抓包工具",
+      "subtitle": "HTTP 请求捕获与分析",
+      "icon": "capture",
+      "keywords": ["抓包", "capture", "packet", "http", "网络"],
+      "prefixes": ["cap", "capture"],
+      "launchMode": "window",
+      "matchers": [
+        {"source": "input", "kind": "url", "boost": 45},
+        {"source": "clipboard", "kind": "url", "boost": 25}
+      ]
+    }
+  ]
+}

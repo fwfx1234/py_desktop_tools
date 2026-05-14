@@ -1,0 +1,22 @@
+{
+  "id": "app-launcher",
+  "name": "软件快速启动",
+  "version": "1.0.0",
+  "description": "搜索并快速启动 Windows 应用程序",
+  "icon": "qta:fa5s.rocket",
+  "entrypoint": "runtime:create_runtime",
+  "qmlPage": "",
+  "category": "tool",
+  "order": 4,
+  "commands": [
+    {
+      "id": "app-launcher.open",
+      "title": "软件快速启动",
+      "subtitle": "在启动器列表中搜索并启动 Windows 应用程序",
+      "icon": "qta:fa5s.rocket",
+      "keywords": ["软件", "启动", "app", "launch", "程序", "打开"],
+      "prefixes": ["app", "open"],
+      "launchMode": "list"
+    }
+  ]
+}

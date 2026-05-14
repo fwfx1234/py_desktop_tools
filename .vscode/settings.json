@@ -1,0 +1,5 @@
+{
+  "python.languageServer": "None",
+  "qt-qml.qmlls.additionalImportPaths": ["${workspaceFolder}\\.venv\\Lib\\site-packages\\PySide6\\qml"],
+  "qt-core.qtInstallationRoot": "${workspaceFolder}\\.venv\\Lib\\site-packages\\PySide6"
+}

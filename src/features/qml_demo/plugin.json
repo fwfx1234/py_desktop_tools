@@ -1,0 +1,22 @@
+{
+  "id": "qml-demo",
+  "name": "QML 学习演示",
+  "version": "1.0.0",
+  "description": "QML 各种用法和组件的交互式演示",
+  "icon": "qta:mdi6.school-outline",
+  "entrypoint": "runtime:create_runtime",
+  "qmlPage": "QmlDemoPage.qml",
+  "contextProperty": "qmlDemoVm",
+  "category": "tool",
+  "order": 30,
+  "commands": [
+    {
+      "id": "qml-demo.open",
+      "title": "QML 学习演示",
+      "subtitle": "QML 各种用法和组件的交互式演示",
+      "icon": "qta:mdi6.school-outline",
+      "keywords": ["qml", "学习", "demo", "组件", "演示", "教程"],
+      "launchMode": "inline_view"
+    }
+  ]
+}

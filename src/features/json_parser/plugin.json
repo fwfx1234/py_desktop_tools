@@ -1,0 +1,27 @@
+{
+  "id": "json-parser",
+  "name": "JSON 解析",
+  "version": "1.0.0",
+  "description": "JSON 格式化、验证与 JSONPath 查询",
+  "icon": "json",
+  "entrypoint": "runtime:create_runtime",
+  "qmlPage": "JsonParserPage.qml",
+  "contextProperty": "jsonParserVm",
+  "category": "tool",
+  "order": 1,
+  "commands": [
+    {
+      "id": "json-parser.open",
+      "title": "JSON 解析",
+      "subtitle": "JSON 格式化、验证与 JSONPath 查询",
+      "icon": "json",
+      "keywords": ["json", "格式化", "format", "parse", "解析", "query"],
+      "prefixes": ["json", "jq"],
+      "launchMode": "window",
+      "matchers": [
+        {"source": "input", "kind": "json", "boost": 180},
+        {"source": "clipboard", "kind": "json", "boost": 100}
+      ]
+    }
+  ]
+}

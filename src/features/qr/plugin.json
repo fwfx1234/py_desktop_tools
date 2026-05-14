@@ -1,0 +1,27 @@
+{
+  "id": "qr-code",
+  "name": "二维码",
+  "version": "1.0.0",
+  "description": "二维码生成与扫描",
+  "icon": "qta:mdi6.qrcode",
+  "entrypoint": "runtime:create_runtime",
+  "qmlPage": "QrCodePage.qml",
+  "contextProperty": "qrVm",
+  "category": "tool",
+  "order": 6,
+  "commands": [
+    {
+      "id": "qr-code.open",
+      "title": "二维码",
+      "subtitle": "二维码生成与扫描",
+      "icon": "qta:mdi6.qrcode",
+      "keywords": ["二维码", "qr", "扫码", "barcode", "生成", "扫描"],
+      "prefixes": ["qr", "qrcode"],
+      "launchMode": "inline_view",
+      "matchers": [
+        {"source": "input", "kind": "url", "boost": 120},
+        {"source": "clipboard", "kind": "url", "boost": 80}
+      ]
+    }
+  ]
+}
