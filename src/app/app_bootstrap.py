@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 from time import perf_counter
 from typing import Any
 
@@ -24,6 +23,7 @@ from app.plugins.runtime import PluginContext
 from app.plugins.service_registry import ServiceRegistry
 from app.plugins.session_manager import PluginSessionManager
 from app.qta_icon_provider import QtAwesomeImageProvider
+from app.paths import resource_root
 from app.storage import StorageManager
 from app.tray_coordinator import TrayCoordinator
 
@@ -38,13 +38,13 @@ class ApplicationBootstrapper:
         engine_started_at = perf_counter()
         engine = QQmlApplicationEngine()
         engine.addImageProvider("qta", QtAwesomeImageProvider())
-        self._log.info("app.bootstrap.engine_ready", "QML 引擎初始化完成", elapsedMs=int((perf_counter() - engine_started_at) * 1000))
+        self._log.debug("app.bootstrap.engine_ready", "QML 引擎初始化完成", elapsedMs=int((perf_counter() - engine_started_at) * 1000))
 
         app_vm_started_at = perf_counter()
         app_vm = AppViewModel()
         qml_context = engine.rootContext()
         qml_context.setContextProperty("app", app_vm)
-        self._log.info("app.bootstrap.app_vm_ready", "AppViewModel 初始化完成", elapsedMs=int((perf_counter() - app_vm_started_at) * 1000))
+        self._log.debug("app.bootstrap.app_vm_ready", "AppViewModel 初始化完成", elapsedMs=int((perf_counter() - app_vm_started_at) * 1000))
 
         services_started_at = perf_counter()
         storage = StorageManager()
@@ -54,19 +54,27 @@ class ApplicationBootstrapper:
             storage=storage,
             dynamic_commands=dynamic_commands,
         )
+        app_vm.setPlatform(platform_services.info.name, platform_services.info.display_name)
         platform_api = platform_services.create_api()
         command_index = CommandIndexDb(
             storage.database("command_index.db", wal=True, check_same_thread=False)
         )
-        self._log.info("app.bootstrap.services_ready", "平台服务和存储初始化完成", elapsedMs=int((perf_counter() - services_started_at) * 1000))
+        self._log.debug("app.bootstrap.services_ready", "平台服务和存储初始化完成", elapsedMs=int((perf_counter() - services_started_at) * 1000))
         manifests_started_at = perf_counter()
         manifests = load_all_plugin_manifests()
-        self._log.info("app.plugins.loaded", "插件清单加载完成", count=len(manifests), elapsedMs=int((perf_counter() - manifests_started_at) * 1000))
+        self._log.debug("app.plugins.loaded", "插件清单加载完成", count=len(manifests), elapsedMs=int((perf_counter() - manifests_started_at) * 1000))
 
         managers_started_at = perf_counter()
         plugin_manager = PluginManager(manifests)
+        command_service = CommandService(
+            manifests,
+            command_index,
+            dynamic_commands,
+            platform_services=platform_services,
+        )
         plugin_context = PluginContext(
             command_index=command_index,
+            command_service=command_service,
             platform=platform_api,
             services=ServiceRegistry(
                 platform=platform_api,
@@ -74,17 +82,11 @@ class ApplicationBootstrapper:
             ),
         )
         background_manager = BackgroundManager(manifests, plugin_manager, plugin_context)
-        command_service = CommandService(
-            manifests,
-            command_index,
-            dynamic_commands,
-            platform_services=platform_services,
-        )
         launcher_bridge = LauncherBridge(command_service, plugin_context.services)
         qml_context.setContextProperty("launcherBridge", launcher_bridge)
-        self._log.info("app.bootstrap.managers_ready", "插件和命令管理器初始化完成", elapsedMs=int((perf_counter() - managers_started_at) * 1000))
+        self._log.debug("app.bootstrap.managers_ready", "插件和命令管理器初始化完成", elapsedMs=int((perf_counter() - managers_started_at) * 1000))
 
-        app_dir = Path(__file__).parent
+        app_dir = resource_root() / "src" / "app"
         main_qml = app_dir / "Main.qml"
         plugin_window_qml = app_dir / "launcher" / "PluginWindow.qml"
         qml_started_at = perf_counter()
@@ -93,7 +95,7 @@ class ApplicationBootstrapper:
             self._log.error("app.bootstrap.qml_load_failed", "主 QML 加载失败", qmlPath=str(main_qml), elapsedMs=int((perf_counter() - qml_started_at) * 1000))
             command_index.close()
             return None
-        self._log.info(
+        self._log.debug(
             "app.bootstrap.qml_loaded",
             "主 QML 加载完成",
             qmlPath=str(main_qml),
@@ -151,14 +153,14 @@ class ApplicationBootstrapper:
             on_restart=runtime_coordinator.restart_app,
             on_quit=self._qt_app.quit,
         )
-        self._log.info(
+        self._log.debug(
             "app.bootstrap.coordinators_ready",
             "运行协调器初始化完成",
             launcherWindowFound=launcher_window is not None,
             elapsedMs=int((perf_counter() - coordinators_started_at) * 1000),
         )
 
-        self._log.info("app.bootstrap.build_ready", "应用启动上下文组装完成", elapsedMs=int((perf_counter() - total_started_at) * 1000))
+        self._log.debug("app.bootstrap.build_ready", "应用启动上下文组装完成", elapsedMs=int((perf_counter() - total_started_at) * 1000))
         return ApplicationContext(
             qt_app=self._qt_app,
             log=self._log,

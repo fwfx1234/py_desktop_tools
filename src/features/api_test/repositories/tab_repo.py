@@ -16,7 +16,8 @@ class TabRepository:
                 """
                 SELECT id, name, method, url, request_mode, body_mode, auth_type, auth_value,
                        headers_text, cookies_text, body_text, params_text, path_params_text,
-                       env_base_url, pre_ops_text, post_ops_text, node_id, mock_mode, updated_at
+                       env_base_url, pre_ops_text, post_ops_text, node_id, mock_mode,
+                       active_request_tab, updated_at
                 FROM http_tabs
                 ORDER BY updated_at DESC
                 """
@@ -41,7 +42,8 @@ class TabRepository:
                 "postOpsText": row[15],
                 "nodeId": row[16],
                 "mockMode": bool(row[17]),
-                "updatedAt": row[18],
+                "activeRequestTab": int(row[18] or 0),
+                "updatedAt": row[19],
             }
             for row in rows
         ]
@@ -66,6 +68,7 @@ class TabRepository:
         post_ops_text: str,
         node_id: str,
         mock_mode: bool,
+        active_request_tab: int = 0,
     ) -> None:
         now = int(time.time() * 1000)
         with self._database.connection() as conn:
@@ -74,8 +77,9 @@ class TabRepository:
                 INSERT INTO http_tabs (
                     id, name, method, url, request_mode, body_mode, auth_type, auth_value,
                     headers_text, cookies_text, body_text, params_text, path_params_text,
-                    env_base_url, pre_ops_text, post_ops_text, node_id, mock_mode, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    env_base_url, pre_ops_text, post_ops_text, node_id, mock_mode,
+                    active_request_tab, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     name=excluded.name,
                     method=excluded.method,
@@ -94,6 +98,7 @@ class TabRepository:
                     post_ops_text=excluded.post_ops_text,
                     node_id=excluded.node_id,
                     mock_mode=excluded.mock_mode,
+                    active_request_tab=excluded.active_request_tab,
                     updated_at=excluded.updated_at
                 """,
                 (
@@ -115,6 +120,7 @@ class TabRepository:
                     post_ops_text,
                     node_id,
                     1 if mock_mode else 0,
+                    max(0, int(active_request_tab or 0)),
                     now,
                 ),
             )

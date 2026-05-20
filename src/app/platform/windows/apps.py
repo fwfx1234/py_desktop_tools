@@ -23,24 +23,7 @@ class WindowsAppIndexer:
     ) -> list[AppEntry]:
         if icon_dir is not None and extract_icons:
             icon_dir.mkdir(parents=True, exist_ok=True)
-        paths: list[Path] = []
-        appdata = os.environ.get("APPDATA", "")
-        programdata = os.environ.get("PROGRAMDATA", "C:\\ProgramData")
-        userprofile = os.environ.get("USERPROFILE", "")
-
-        for base in [appdata, programdata]:
-            if base:
-                candidate = Path(base) / "Microsoft" / "Windows" / "Start Menu" / "Programs"
-                if candidate.is_dir():
-                    paths.append(candidate)
-
-        if userprofile:
-            desktop = Path(userprofile) / "Desktop"
-            if desktop.is_dir():
-                paths.append(desktop)
-            public_desktop = Path(programdata) / "Microsoft" / "Windows" / "Desktop"
-            if public_desktop.is_dir():
-                paths.append(public_desktop)
+        paths = _application_search_paths()
 
         seen_paths: set[str] = set()
         seen_names: set[str] = set()
@@ -71,6 +54,44 @@ class WindowsAppIndexer:
                     )
                 )
         return apps
+
+    def quick_signature(self) -> str:
+        digest = hashlib.sha256()
+        count = 0
+        for base in _application_search_paths():
+            for shortcut in base.rglob("*.lnk"):
+                try:
+                    stat = shortcut.stat()
+                except OSError:
+                    continue
+                count += 1
+                digest.update(str(shortcut).encode("utf-8", errors="ignore"))
+                digest.update(b"\0")
+                digest.update(str(stat.st_mtime_ns).encode("ascii"))
+                digest.update(b"\0")
+        return f"windows-apps-v1:{count}:{digest.hexdigest()}"
+
+
+def _application_search_paths() -> list[Path]:
+    paths: list[Path] = []
+    appdata = os.environ.get("APPDATA", "")
+    programdata = os.environ.get("PROGRAMDATA", "C:\\ProgramData")
+    userprofile = os.environ.get("USERPROFILE", "")
+
+    for base in [appdata, programdata]:
+        if base:
+            candidate = Path(base) / "Microsoft" / "Windows" / "Start Menu" / "Programs"
+            if candidate.is_dir():
+                paths.append(candidate)
+
+    if userprofile:
+        desktop = Path(userprofile) / "Desktop"
+        if desktop.is_dir():
+            paths.append(desktop)
+        public_desktop = Path(programdata) / "Microsoft" / "Windows" / "Desktop"
+        if public_desktop.is_dir():
+            paths.append(public_desktop)
+    return paths
 
 
 def _extract_icon(lnk_path: str, out_path: Path) -> str:

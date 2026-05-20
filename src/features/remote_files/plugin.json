@@ -1,0 +1,27 @@
+{
+  "id": "remote-files",
+  "name": "FTP/SFTP 管理",
+  "version": "1.0.0",
+  "description": "FTP、FTPS、SFTP 远程文件管理与 SSH 终端",
+  "icon": "qta:mdi6.folder-network-outline",
+  "entrypoint": "runtime:create_runtime",
+  "qmlPage": "RemoteFilesPage.qml",
+  "contextProperty": "remoteFilesVm",
+  "category": "tool",
+  "window": {
+    "width": 0.86,
+    "height": 0.82
+  },
+  "order": 6,
+  "commands": [
+    {
+      "id": "remote-files.open",
+      "title": "FTP/SFTP 管理",
+      "subtitle": "远程文件管理与 SSH 终端",
+      "icon": "qta:mdi6.folder-network-outline",
+      "keywords": ["ftp", "sftp", "ftps", "ssh", "远程", "文件", "服务器"],
+      "prefixes": ["ftp", "sftp", "ssh"],
+      "launchMode": "window"
+    }
+  ]
+}

@@ -89,7 +89,7 @@ class PluginManager:
             runtime = self._runtimes.pop(plugin_id, None)
         if runtime is not None:
             runtime.on_exit()
-            self._log.info("plugin.runtime.close", "关闭插件 runtime", pluginId=plugin_id)
+            self._log.debug("plugin.runtime.close", "关闭插件 runtime", pluginId=plugin_id)
 
     def close_all(self) -> None:
         with self._lock:
@@ -109,7 +109,7 @@ class PluginManager:
             factory: RuntimeFactory = getattr(module, factory_name)
             runtime = factory()
             self._runtimes[manifest.id] = runtime
-            self._log.info(
+            self._log.debug(
                 "plugin.runtime.load",
                 "加载插件 runtime",
                 pluginId=manifest.id,

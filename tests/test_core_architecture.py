@@ -6,8 +6,11 @@ import sys
 import tempfile
 import unittest
 import logging
+from types import SimpleNamespace
 from threading import Event
 from unittest.mock import patch
+
+from PySide6.QtCore import QObject, QPoint
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,6 +25,7 @@ from app.commands.usage_service import CommandUsageService
 from app.concurrency import PythonTaskRunner
 from app.hotkey_coordinator import HotkeyCoordinator
 from app.logging.manager import LoggingManager
+from app.platform.models import PlatformResult
 from app.platform.services import PlatformServices
 from app.plugins.manifest import ContextMatcher
 from app.plugins.manifest import CommandContribution, PluginManifest
@@ -31,6 +35,7 @@ from app.plugins.session_state import (
     reactivate_state,
     retained_state,
 )
+from app.plugin_surface_coordinator import PluginSurfaceCoordinator, PluginWindowSurface
 from app.plugins.service_registry import ServiceRegistry
 from app.services.clipboard.service import ClipboardService
 from app.storage import StorageManager
@@ -217,6 +222,308 @@ class PluginSessionStateTests(unittest.TestCase):
         )
 
 
+class PluginSurfaceCoordinatorTests(unittest.TestCase):
+    def test_window_config_preserves_always_on_top_option(self) -> None:
+        from app.plugin_surface_coordinator import _plugin_window_config
+
+        manifest = PluginManifest(
+            id="clipboard",
+            name="Clipboard",
+            version="1",
+            description="",
+            icon="",
+            entrypoint="runtime:create_runtime",
+            qml_page="ClipboardWindowPage.qml",
+            window_options={"width": 980, "height": 640, "alwaysOnTop": True},
+        )
+        session = SimpleNamespace(manifest=manifest)
+
+        config = _plugin_window_config(session)
+
+        self.assertEqual(config["width"], 980)
+        self.assertEqual(config["height"], 640)
+        self.assertTrue(config["alwaysOnTop"])
+
+    def test_stale_window_destroy_does_not_forget_new_surface(self) -> None:
+        coordinator = PluginSurfaceCoordinator.__new__(PluginSurfaceCoordinator)
+        old_window = object()
+        new_window = object()
+        coordinator._windows = {
+            "clipboard": PluginWindowSurface(plugin_id="clipboard", window=new_window)
+        }
+
+        coordinator._forget_window_surface("clipboard", old_window)
+
+        self.assertIs(coordinator._windows["clipboard"].window, new_window)
+
+        coordinator._forget_window_surface("clipboard", new_window)
+
+        self.assertNotIn("clipboard", coordinator._windows)
+
+    def test_duplicate_window_open_is_ignored_while_create_is_in_progress(self) -> None:
+        coordinator = PluginSurfaceCoordinator.__new__(PluginSurfaceCoordinator)
+        coordinator._windows = {}
+        coordinator._opening_windows = {"clipboard"}
+        coordinator._qt_app = SimpleNamespace(topLevelWindows=lambda: [])
+        opened: list[str] = []
+        coordinator._open_independent_window = lambda plugin_id, session: opened.append(plugin_id) or True
+
+        shown = coordinator._show_window_surface("clipboard", object())
+
+        self.assertTrue(shown)
+        self.assertEqual(opened, [])
+
+    def test_existing_top_level_window_is_reused_when_surface_map_is_empty(self) -> None:
+        class FakeWindow(QObject):
+            def __init__(self, plugin_id: str, visible: bool) -> None:
+                super().__init__()
+                self.setProperty("pluginId", plugin_id)
+                self.setProperty("retainOnClose", True)
+                self._visible = visible
+                self.closed = False
+
+            def isVisible(self) -> bool:
+                return self._visible
+
+            def close(self) -> None:
+                self.closed = True
+                self._visible = False
+
+        hidden_duplicate = FakeWindow("clipboard", False)
+        visible_window = FakeWindow("clipboard", True)
+        other_window = FakeWindow("api-test", True)
+        coordinator = PluginSurfaceCoordinator.__new__(PluginSurfaceCoordinator)
+        coordinator._windows = {}
+        coordinator._qt_app = SimpleNamespace(topLevelWindows=lambda: [hidden_duplicate, visible_window, other_window])
+
+        surface = coordinator._get_live_surface("clipboard")
+
+        self.assertIsNotNone(surface)
+        self.assertIs(surface.window, visible_window)
+        self.assertIs(coordinator._windows["clipboard"].window, visible_window)
+        self.assertTrue(hidden_duplicate.closed)
+        self.assertFalse(other_window.closed)
+
+    def test_target_screen_prefers_focus_screen_over_cursor_screen(self) -> None:
+        focus_screen = object()
+        cursor_screen = object()
+        launcher_screen = object()
+        primary_screen = object()
+        coordinator = PluginSurfaceCoordinator.__new__(PluginSurfaceCoordinator)
+        coordinator._qt_app = SimpleNamespace(
+            screenAt=lambda pos: focus_screen if pos == QPoint(10, 20) else cursor_screen,
+            primaryScreen=lambda: primary_screen,
+        )
+        coordinator._launcher_window = SimpleNamespace(screen=lambda: launcher_screen)
+
+        with patch("app.plugin_surface_coordinator.focused_window_point", return_value=QPoint(10, 20)):
+            self.assertIs(coordinator._target_screen(), focus_screen)
+
+    def test_target_screen_falls_back_to_cursor_screen_before_launcher_screen(self) -> None:
+        cursor_screen = object()
+        launcher_screen = object()
+        primary_screen = object()
+        coordinator = PluginSurfaceCoordinator.__new__(PluginSurfaceCoordinator)
+        coordinator._qt_app = SimpleNamespace(
+            screenAt=lambda _pos: cursor_screen,
+            primaryScreen=lambda: primary_screen,
+        )
+        coordinator._launcher_window = SimpleNamespace(screen=lambda: launcher_screen)
+
+        with patch("app.plugin_surface_coordinator.focused_window_point", return_value=None):
+            self.assertIs(coordinator._target_screen(), cursor_screen)
+
+    def test_reused_window_moves_to_focus_screen_before_activation(self) -> None:
+        class FakeWindow(QObject):
+            def __init__(self, screen: object) -> None:
+                super().__init__()
+                self.setProperty("pluginId", "clipboard")
+                self._screen = screen
+                self.calls: list[str] = []
+
+            def screen(self) -> object:
+                return self._screen
+
+            def width(self) -> int:
+                return 720
+
+            def height(self) -> int:
+                return 520
+
+            def setScreen(self, screen: object) -> None:
+                self._screen = screen
+                self.calls.append("setScreen")
+
+            def show(self) -> None:
+                self.calls.append("show")
+
+            def raise_(self) -> None:
+                self.calls.append("raise")
+
+            def requestActivate(self) -> None:
+                self.calls.append("activate")
+
+        old_screen = object()
+        target_screen = object()
+        window = FakeWindow(old_screen)
+        coordinator = PluginSurfaceCoordinator.__new__(PluginSurfaceCoordinator)
+        coordinator._windows = {"clipboard": PluginWindowSurface(plugin_id="clipboard", window=window)}
+        coordinator._qt_app = SimpleNamespace(
+            topLevelWindows=lambda: [window],
+            screenAt=lambda pos: target_screen if pos == QPoint(30, 40) else old_screen,
+            primaryScreen=lambda: old_screen,
+        )
+
+        with (
+            patch("app.plugin_surface_coordinator.focused_window_point", return_value=QPoint(30, 40)),
+            patch("app.plugin_surface_coordinator._center_window_once") as center_window,
+            patch("app.plugin_surface_coordinator.QTimer.singleShot"),
+        ):
+            shown = coordinator._show_window_surface("clipboard", object())
+
+        self.assertTrue(shown)
+        center_window.assert_called_once_with(window, target_screen, 720, 520)
+        self.assertEqual(window.calls, ["setScreen", "show", "raise", "activate"])
+
+    def test_reused_window_configures_and_native_activates_surface(self) -> None:
+        class FakeWindow(QObject):
+            def __init__(self) -> None:
+                super().__init__()
+                self.setProperty("pluginId", "clipboard")
+                self.setProperty("alwaysOnTop", True)
+                self.calls: list[str] = []
+
+            def screen(self) -> object:
+                return object()
+
+            def show(self) -> None:
+                self.calls.append("show")
+
+            def raise_(self) -> None:
+                self.calls.append("raise")
+
+            def requestActivate(self) -> None:
+                self.calls.append("request")
+
+        window = FakeWindow()
+        coordinator = PluginSurfaceCoordinator.__new__(PluginSurfaceCoordinator)
+        coordinator._windows = {"clipboard": PluginWindowSurface(plugin_id="clipboard", window=window)}
+        coordinator._qt_app = SimpleNamespace(topLevelWindows=lambda: [window], screenAt=lambda _pos: None)
+        calls: list[str] = []
+        coordinator._move_window_to_target_screen = lambda _window: calls.append("move")
+        coordinator._configure_surface_window = lambda _window, *, force_top: calls.append(f"configure:{force_top}")
+
+        with (
+            patch("app.plugin_surface_coordinator._activate_macos_window", side_effect=lambda _window: calls.append("native") or True),
+            patch("app.plugin_surface_coordinator.QTimer.singleShot"),
+        ):
+            shown = coordinator._show_window_surface("clipboard", object())
+
+        self.assertTrue(shown)
+        self.assertEqual(calls, ["move", "configure:True", "native"])
+        self.assertEqual(window.calls, ["show", "raise", "request"])
+
+    def test_delayed_surface_activation_reconfigures_window_level(self) -> None:
+        class FakeWindow(QObject):
+            def __init__(self) -> None:
+                super().__init__()
+                self.setProperty("alwaysOnTop", True)
+                self.calls: list[str] = []
+
+            def raise_(self) -> None:
+                self.calls.append("raise")
+
+            def requestActivate(self) -> None:
+                self.calls.append("request")
+
+        window = FakeWindow()
+        coordinator = PluginSurfaceCoordinator.__new__(PluginSurfaceCoordinator)
+        calls: list[str] = []
+        coordinator._configure_surface_window = lambda _window, *, force_top: calls.append(f"configure:{force_top}")
+
+        with patch("app.plugin_surface_coordinator._activate_macos_window", side_effect=lambda _window: calls.append("native") or True):
+            coordinator._activate_surface_window(window)
+
+        self.assertEqual(calls, ["configure:True", "native"])
+        self.assertEqual(window.calls, ["raise", "request"])
+
+
+class LauncherRuntimeCoordinatorTests(unittest.TestCase):
+    def test_center_launcher_prefers_focus_screen_over_cursor_screen(self) -> None:
+        from app.launcher_runtime_coordinator import LauncherRuntimeCoordinator
+
+        class FakeWindow(QObject):
+            def __init__(self) -> None:
+                super().__init__()
+                self.calls: list[str] = []
+
+            def width(self) -> int:
+                return 760
+
+            def height(self) -> int:
+                return 560
+
+            def setScreen(self, screen: object) -> None:
+                self.calls.append(("setScreen", screen))
+
+            def screen(self) -> object:
+                return object()
+
+        focus_screen = object()
+        cursor_screen = object()
+        launcher = FakeWindow()
+        coordinator = LauncherRuntimeCoordinator.__new__(LauncherRuntimeCoordinator)
+        coordinator._launcher_window = launcher
+        coordinator._qt_app = SimpleNamespace(
+            screenAt=lambda pos: focus_screen if pos == QPoint(10, 20) else cursor_screen,
+            primaryScreen=lambda: object(),
+        )
+
+        with (
+            patch("app.launcher_runtime_coordinator.focused_window_point", return_value=QPoint(10, 20)),
+            patch("app.launcher_runtime_coordinator._center_window_once") as center_window,
+        ):
+            coordinator._center_launcher_window()
+
+        center_window.assert_called_once_with(launcher, focus_screen, 760, 560)
+        self.assertEqual(launcher.calls, [("setScreen", focus_screen)])
+
+    def test_show_launcher_reconfigures_macos_window_after_show(self) -> None:
+        from app.launcher_runtime_coordinator import LauncherRuntimeCoordinator
+
+        class FakeWindow(QObject):
+            def __init__(self) -> None:
+                super().__init__()
+                self.calls: list[str] = []
+
+            def width(self) -> int:
+                return 760
+
+            def height(self) -> int:
+                return 560
+
+            def show(self) -> None:
+                self.calls.append("show")
+
+            def raise_(self) -> None:
+                self.calls.append("raise")
+
+            def requestActivate(self) -> None:
+                self.calls.append("request")
+
+        launcher = FakeWindow()
+        coordinator = LauncherRuntimeCoordinator.__new__(LauncherRuntimeCoordinator)
+        coordinator._launcher_window = launcher
+        coordinator._configure_launcher_window_for_macos = lambda *, force=False: launcher.calls.append(f"configure:{force}")
+        coordinator._center_launcher_window = lambda: launcher.calls.append("center")
+        coordinator._activate_launcher_window_native = lambda: launcher.calls.append("native")
+
+        result = coordinator._show_launcher_window(activate=True)
+
+        self.assertGreaterEqual(result["elapsedMs"], 0)
+        self.assertEqual(launcher.calls, ["configure:False", "center", "show", "configure:True", "raise", "native", "request"])
+
+
 class ClipboardServiceTests(unittest.TestCase):
     def test_latest_context_item_prefers_captured_item(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -258,6 +565,165 @@ class ClipboardServiceTests(unittest.TestCase):
                     os.environ.pop("PY_DESKTOP_TOOLS_LOG_DIR", None)
                 else:
                     os.environ["PY_DESKTOP_TOOLS_LOG_DIR"] = old_log_dir
+
+    def test_repeated_clip_replaces_old_entry_and_preserves_pin(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            storage = StorageManager(Path(tmp))
+            service = ClipboardService(
+                storage.database("clipboard.db"),
+                settings_store=storage.dict_store("clipboard/settings"),
+            )
+            try:
+                service.store.add_text("alpha")
+                first = service.latest_item()
+                self.assertIsNotNone(first)
+                service.toggle_pin(int(first["id"]))
+                service.store.add_text("beta")
+                service.store.add_text("alpha")
+
+                rows = service.search("")
+                alpha_rows = [row for row in rows if row["content"] == "alpha"]
+                self.assertEqual(len(alpha_rows), 1)
+                self.assertEqual(rows[0]["content"], "alpha")
+                self.assertTrue(rows[0]["pinned"])
+            finally:
+                service.close()
+
+    def test_copy_item_promotes_existing_history_item(self) -> None:
+        class RecordingBackend:
+            def __init__(self) -> None:
+                self.writes: list[str] = []
+
+            def start(self, on_change) -> None:
+                del on_change
+
+            def stop(self) -> None:
+                return
+
+            def read_current(self):
+                return None
+
+            def write_text(self, text: str) -> None:
+                self.writes.append(text)
+
+            def write_files(self, paths) -> None:
+                del paths
+
+            def write_image(self, path: str) -> None:
+                del path
+
+            def clear(self) -> None:
+                return
+
+        with tempfile.TemporaryDirectory() as tmp:
+            backend = RecordingBackend()
+            storage = StorageManager(Path(tmp))
+            service = ClipboardService(
+                storage.database("clipboard.db"),
+                settings_store=storage.dict_store("clipboard/settings"),
+                backend=backend,
+            )
+            try:
+                service.store.add_text("alpha")
+                alpha = service.latest_item()
+                self.assertIsNotNone(alpha)
+                service.store.add_text("beta")
+
+                self.assertTrue(service.copy_item_by_id(int(alpha["id"])))
+
+                self.assertEqual(backend.writes, ["alpha"])
+                self.assertEqual(service.latest_item()["content"], "alpha")
+                self.assertEqual(
+                    len([row for row in service.search("") if row["content"] == "alpha"]),
+                    1,
+                )
+            finally:
+                service.close()
+
+    def test_search_filter_type_is_applied_before_limit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            storage = StorageManager(Path(tmp))
+            service = ClipboardService(
+                storage.database("clipboard.db"),
+                settings_store=storage.dict_store("clipboard/settings"),
+            )
+            try:
+                service.store.add_files(["/tmp/readme.txt"])
+                for index in range(120):
+                    service.store.add_text(f"text-{index}")
+
+                rows = service.search("", filter_type="files")
+
+                self.assertEqual(len(rows), 1)
+                self.assertEqual(rows[0]["itemType"], "files")
+            finally:
+                service.close()
+
+
+class ClipboardViewModelTests(unittest.TestCase):
+    def test_image_item_uses_valid_file_url_and_clean_title(self) -> None:
+        from features.clipboard.view_model import _file_url, _to_view_item
+
+        with tempfile.TemporaryDirectory() as tmp:
+            image_path = Path(tmp) / "clip.png"
+            image_path.write_bytes(b"png")
+            item = _to_view_item(
+                {
+                    "id": 1,
+                    "itemType": "image",
+                    "content": str(image_path),
+                    "preview": "",
+                    "metadata": {},
+                    "createdAt": "",
+                    "pinned": False,
+                }
+            )
+
+            self.assertEqual(item["title"], "图片")
+            self.assertEqual(item["imageUrl"], image_path.resolve().as_uri())
+            self.assertEqual(_file_url(r"C:\Temp\clip.png"), "file:///C:/Temp/clip.png")
+
+    def test_text_item_detects_useful_badges(self) -> None:
+        from features.clipboard.view_model import _to_view_item
+
+        item = _to_view_item(
+            {
+                "id": 1,
+                "itemType": "text",
+                "content": '{"token": "abc"}',
+                "preview": '{"token": "abc"}',
+                "metadata": {},
+                "createdAt": "",
+                "pinned": False,
+            }
+        )
+
+        self.assertEqual(item["icon"], "qta:mdi6.code-json")
+        self.assertIn("JSON", item["badges"])
+        self.assertIn("敏感", item["badges"])
+        self.assertEqual(item["stats"], "16 字符")
+
+    def test_filter_type_limits_history_items(self) -> None:
+        from features.clipboard.view_model import ClipboardWindowViewModel
+
+        with tempfile.TemporaryDirectory() as tmp:
+            storage = StorageManager(Path(tmp))
+            service = ClipboardService(
+                storage.database("clipboard.db"),
+                settings_store=storage.dict_store("clipboard/settings"),
+            )
+            vm = ClipboardWindowViewModel(service)
+            try:
+                service.store.add_text("alpha")
+                service.store.add_files(["/tmp/readme.txt"])
+                vm.setFilterType("files")
+
+                model = vm.historyModel
+                self.assertEqual(model.count, 1)
+                self.assertEqual(model.itemAt(0)["itemType"], "files")
+            finally:
+                vm.close()
+                service.close()
 
 
 class PythonTaskRunnerTests(unittest.TestCase):
@@ -320,6 +786,7 @@ class LoggingManagerTests(unittest.TestCase):
                     root.addHandler(handler)
 
 
+@unittest.skipUnless(sys.platform == "win32", "Windows hotkey tests require Windows")
 class WindowsHotkeyTests(unittest.TestCase):
     def test_windows_hotkey_parses_common_sequences(self) -> None:
         from app.platform.windows.hotkey import MOD_ALT, MOD_CONTROL, MOD_SHIFT, parse_hotkey
@@ -349,6 +816,115 @@ class WindowsHotkeyTests(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("PY_DESKTOP_TOOLS_HOTKEY_HOOK", None)
             self.assertTrue(manager._should_enable_fallback())
+
+
+class MacHotkeyTests(unittest.TestCase):
+    def test_macos_hotkey_parses_common_sequences(self) -> None:
+        from app.platform.macos.hotkey import _parse_hotkey
+
+        self.assertEqual(_parse_hotkey("Alt+Space"), ({"alt"}, "space"))
+        self.assertEqual(_parse_hotkey("Option+V"), ({"alt"}, "v"))
+        self.assertEqual(_parse_hotkey("Cmd+Shift+F12"), ({"cmd", "shift"}, "f12"))
+        self.assertIsNone(_parse_hotkey("Alt"))
+
+    def test_macos_key_normalization_uses_virtual_key_before_option_char(self) -> None:
+        from app.platform.macos.hotkey import _native_hotkey, _normalize_pressed_key
+
+        self.assertEqual(_normalize_pressed_key(SimpleNamespace(vk=0x09, char="√")), "v")
+        self.assertEqual(_normalize_pressed_key(SimpleNamespace(vk=0x31, char="\xa0")), "space")
+        self.assertEqual(_normalize_pressed_key(SimpleNamespace(char="A")), "a")
+        self.assertEqual(_normalize_pressed_key(SimpleNamespace(name="cmd_r")), "cmd")
+        self.assertEqual(_native_hotkey(({"alt"}, "v")), (0x09, 1 << 11))
+
+    def test_macos_hotkey_triggers_once_until_target_release(self) -> None:
+        from app.platform.macos.hotkey import MacHotkeyManager
+
+        manager = MacHotkeyManager(hotkey="Alt+V")
+        calls: list[str] = []
+        manager._target_modifiers = {"alt"}
+        manager._target_key = "v"
+        manager._queue_pressed = calls.append
+
+        manager._handle_press(SimpleNamespace(vk=0x3A))
+        manager._handle_press(SimpleNamespace(vk=0x09, char="√"))
+        manager._handle_press(SimpleNamespace(vk=0x09, char="√"))
+        manager._handle_release(SimpleNamespace(vk=0x09, char="√"))
+        manager._handle_press(SimpleNamespace(vk=0x09, char="√"))
+
+        self.assertEqual(calls, ["pynput", "pynput"])
+
+    def test_macos_hotkey_does_not_trigger_when_modifier_pressed_after_target(self) -> None:
+        from app.platform.macos.hotkey import MacHotkeyManager
+
+        manager = MacHotkeyManager(hotkey="Alt+V")
+        calls: list[str] = []
+        manager._target_modifiers = {"alt"}
+        manager._target_key = "v"
+        manager._queue_pressed = calls.append
+
+        manager._handle_press(SimpleNamespace(vk=0x09, char="v"))
+        manager._handle_press(SimpleNamespace(vk=0x3A))
+        manager._handle_press(SimpleNamespace(vk=0x09, char="√"))
+
+        self.assertEqual(calls, [])
+
+
+class PermissionApiTests(unittest.TestCase):
+    def test_macos_accessibility_status_uses_system_api(self) -> None:
+        from app.platform.common import permissions
+
+        fake_services = SimpleNamespace(AXIsProcessTrusted=lambda: True)
+
+        with (
+            patch.object(permissions.sys, "platform", "darwin"),
+            patch.dict(sys.modules, {"ApplicationServices": fake_services}),
+        ):
+            result = permissions.DefaultPermissionApi().accessibility_status()
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.data["status"], "authorized")
+
+    def test_open_accessibility_settings_opens_privacy_anchor(self) -> None:
+        from app.platform.common import permissions
+
+        with (
+            patch.object(permissions.sys, "platform", "darwin"),
+            patch("app.platform.common.permissions.subprocess.Popen") as popen,
+        ):
+            result = permissions.DefaultPermissionApi().open_accessibility_settings()
+
+        self.assertTrue(result.ok)
+        self.assertEqual(
+            [call.args[0] for call in popen.call_args_list],
+            [
+                ["open", "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"],
+                ["open", "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Accessibility"],
+            ],
+        )
+
+
+class SystemSettingsViewModelTests(unittest.TestCase):
+    def test_accessibility_status_and_open_settings_are_exposed(self) -> None:
+        from features.system.view_model import SystemSettingsViewModel
+
+        class Permissions:
+            def __init__(self) -> None:
+                self.opened = False
+
+            def accessibility_status(self) -> PlatformResult:
+                return PlatformResult(False, data={"status": "not_authorized"})
+
+            def open_accessibility_settings(self) -> PlatformResult:
+                self.opened = True
+                return PlatformResult(True)
+
+        permissions = Permissions()
+        vm = SystemSettingsViewModel(permissions=permissions)
+
+        self.assertFalse(vm.accessibilityAuthorized)
+        self.assertEqual(vm.accessibilityStatusText, "辅助功能权限：未授权")
+        self.assertTrue(vm.openAccessibilitySettings())
+        self.assertTrue(permissions.opened)
 
 
 class _FakeSignal:

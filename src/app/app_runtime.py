@@ -75,7 +75,7 @@ class ApplicationRuntime:
         self._log.info("app.bootstrap.complete", "应用启动上下文创建完成", elapsedMs=build_elapsed_ms)
         start_started_at = perf_counter()
         app_context.start()
-        self._log.info("app.context.start_complete", "应用上下文启动完成", elapsedMs=int((perf_counter() - start_started_at) * 1000))
+        self._log.debug("app.context.start_complete", "应用上下文启动完成", elapsedMs=int((perf_counter() - start_started_at) * 1000))
 
         if os.getenv("PY_DESKTOP_QML_HOT_RELOAD", "").strip() in {"1", "true", "TRUE"}:
             hot_reload_started_at = perf_counter()
@@ -93,7 +93,7 @@ class ApplicationRuntime:
 
         self._qt_app.setProperty("_applicationContext", app_context)
         exec_started_at = perf_counter()
-        self._log.info("app.event_loop.start", "进入 Qt 事件循环")
+        self._log.debug("app.event_loop.start", "进入 Qt 事件循环")
         code = self._qt_app.exec()
         self._log.info("app.exit", "应用退出", exitCode=code, elapsedMs=int((perf_counter() - exec_started_at) * 1000))
         return code

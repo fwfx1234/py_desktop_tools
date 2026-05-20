@@ -24,4 +24,19 @@ TextField {
             ? Theme.token("color-primary-active", control.dark)
             : (control.hovered ? Theme.token("color-border-default", control.dark) : "transparent")
     }
+
+    TapHandler {
+        acceptedButtons: Qt.RightButton
+        gesturePolicy: TapHandler.ReleaseWithinBounds
+        onTapped: function(eventPoint) {
+            control.forceActiveFocus()
+            uiTextEditMenu.openAt(control, eventPoint.position.x, eventPoint.position.y)
+        }
+    }
+
+    UiTextEditMenu {
+        id: uiTextEditMenu
+        target: control
+        dark: control.dark
+    }
 }

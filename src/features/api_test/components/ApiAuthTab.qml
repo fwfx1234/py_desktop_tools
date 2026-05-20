@@ -13,6 +13,8 @@ Item {
     property bool dark: false
     property color textMain: Theme.token("color-text-primary", dark)
     property color textMuted: Theme.token("color-text-regular", dark)
+    property color panelBg: Theme.token("color-bg-surface", dark)
+    property color panelBorder: Theme.token("color-bg-subtle-2", dark)
     property string authTypeValue: "none"
     property string authValueText: ""
 
@@ -21,6 +23,19 @@ Item {
 
     function setAuthValue(text) {
         authValueField.text = text
+    }
+
+    function insertMagicValue(valueText) {
+        var start = Math.min(authValueField.selectionStart, authValueField.selectionEnd)
+        var end = Math.max(authValueField.selectionStart, authValueField.selectionEnd)
+        if (isNaN(start) || isNaN(end) || start < 0 || end < 0) {
+            start = authValueField.cursorPosition
+            end = authValueField.cursorPosition
+        }
+        authValueField.text = authValueField.text.slice(0, start) + valueText + authValueField.text.slice(end)
+        authValueField.cursorPosition = start + valueText.length
+        authValueField.forceActiveFocus()
+        root.authValueChanged(authValueField.text)
     }
 
     ColumnLayout {
@@ -57,16 +72,29 @@ Item {
             Item { Layout.fillWidth: true }
         }
 
-        UiTextField {
-            id: authValueField
-            dark: root.dark
+        RowLayout {
             Layout.fillWidth: true
             Layout.preferredHeight: 30
-            text: root.authValueText
-            placeholderText: "Token / Basic值 / API Key"
-            onTextChanged: {
-                root.authValueText = text
-                root.authValueChanged(text)
+
+            UiTextField {
+                id: authValueField
+                dark: root.dark
+                Layout.fillWidth: true
+                text: root.authValueText
+                placeholderText: "Token / Basic值 / API Key"
+                onTextChanged: {
+                    root.authValueText = text
+                    root.authValueChanged(text)
+                }
+            }
+
+            ApiMagicInsertButton {
+                dark: root.dark
+                panelBg: root.panelBg
+                panelBorder: root.panelBorder
+                textMain: root.textMain
+                textMuted: root.textMuted
+                onInsertRequested: function(valueText) { root.insertMagicValue(valueText) }
             }
         }
         Label {

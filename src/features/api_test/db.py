@@ -7,7 +7,7 @@ from app.storage import SQLiteConnection, SQLiteDatabase
 
 
 class ApiDatabase:
-    SCHEMA_VERSION = 3
+    SCHEMA_VERSION = 4
 
     def __init__(
         self,
@@ -27,8 +27,15 @@ class ApiDatabase:
     def ensure_schema(self) -> None:
         with self._database.connection() as conn:
             self._create_schema(conn)
+            self._migrate(conn)
             self._seed_default_environment(conn)
             conn.execute(f"PRAGMA user_version = {self.SCHEMA_VERSION}")
+
+    @staticmethod
+    def _migrate(conn: SQLiteConnection) -> None:
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(http_tabs)").fetchall()}
+        if "active_request_tab" not in cols:
+            conn.execute("ALTER TABLE http_tabs ADD COLUMN active_request_tab INTEGER NOT NULL DEFAULT 0")
 
     def _seed_default_environment(self, conn: SQLiteConnection) -> None:
         row = conn.execute("SELECT id FROM api_environments LIMIT 1").fetchone()
@@ -66,6 +73,7 @@ class ApiDatabase:
                 post_ops_text TEXT NOT NULL DEFAULT '',
                 node_id TEXT NOT NULL DEFAULT '',
                 mock_mode INTEGER NOT NULL DEFAULT 0,
+                active_request_tab INTEGER NOT NULL DEFAULT 0,
                 updated_at INTEGER NOT NULL
             );
 

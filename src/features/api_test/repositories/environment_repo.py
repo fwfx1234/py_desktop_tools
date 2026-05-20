@@ -69,14 +69,14 @@ class EnvironmentRepository:
                 conn.execute(
                     """
                     INSERT INTO api_environments (id, name, base_url, sort_order, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        env_id,
-                        str(env.get("name") or f"环境 {env_index + 1}"),
-                        str(env.get("baseUrl") or ""),
-                        env_index,
-                        now,
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    env_id,
+                    str(env.get("name") or ""),
+                    str(env.get("baseUrl") or ""),
+                    env_index,
+                    now,
                         now,
                     ),
                 )
@@ -131,7 +131,7 @@ def _normalize_environments(environments: list[dict]) -> list[dict]:
         normalized.append(
             {
                 "id": str(env.get("id") or uuid4()),
-                "name": str(env.get("name") or "").strip() or f"环境 {index + 1}",
+                "name": str(env.get("name") or "").strip(),
                 "baseUrl": str(env.get("baseUrl") or "").strip(),
                 "variables": variables,
                 "headers": headers,

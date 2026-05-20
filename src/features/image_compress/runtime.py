@@ -15,7 +15,11 @@ class ImageCompressRuntime:
         files = _image_files_from_input(action.input_text)
         if not files:
             files = _latest_clipboard_image_files(ctx)
-        view_model = ImageCompressViewModel(files)
+        view_model = ImageCompressViewModel(
+            files,
+            platform_api=ctx.platform,
+            clipboard_service=getattr(ctx.services, "clipboard", None),
+        )
         return ImageCompressSession(action.manifest, view_model)
 
     def on_exit(self) -> None:

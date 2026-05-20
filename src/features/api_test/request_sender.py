@@ -67,7 +67,6 @@ class RequestSenderCoordinator:
             self.send_ws(tab_id, body_text, ws_encoding)
             return
         if current_body_mode == 1:
-            body_text = self._build_form_body(body_form_rows)
             if not mock_mode:
                 headers_text = self._ensure_header(headers_text, "Content-Type", "application/x-www-form-urlencoded")
         elif current_body_mode == 2 and not mock_mode:
@@ -80,6 +79,8 @@ class RequestSenderCoordinator:
             if headers_text:
                 headers_text += "\n"
             headers_text += f"Cookie: {cookies_text.strip()}"
+        if current_body_mode == 1:
+            body_text = self._build_form_body(body_form_rows)
         if current_body_mode == 5:
             self.send_api_file(
                 method,
@@ -113,6 +114,7 @@ class RequestSenderCoordinator:
             post_ops,
             mock_response,
             tab_id,
+            body_form_rows if current_body_mode == 1 else None,
         )
 
     def send_api_file(
@@ -182,6 +184,7 @@ class RequestSenderCoordinator:
         assertions_text,
         mock_response_text,
         tab_id,
+        body_form_rows=None,
     ) -> None:
         request_id = self._begin_request()
         if not request_id:
@@ -214,6 +217,7 @@ class RequestSenderCoordinator:
                 assertions_text,
                 mock_response_text,
                 tab_id,
+                body_form_rows,
             )
 
         self._runner.start(

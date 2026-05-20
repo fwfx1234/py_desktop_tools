@@ -49,6 +49,7 @@ class TabsController:
     def set_current_index(self, index: int, environments: list[dict]) -> int | None:
         if index == self.current_index:
             return None
+        self.persist_current()
         self.current_index = int(index)
         return self.apply_current_to_editor(environments)
 
@@ -68,6 +69,7 @@ class TabsController:
             return False
         tab = self._editor.update_tab_from_state(self.items[self.current_index], self._env_base_url())
         self.items[self.current_index] = tab
+        self.items = list(self.items)
         if tab.get("kind") == "case":
             self._save_case_snapshot(str(tab.get("nodeId") or ""), snapshot_from_tab(tab))
         else:
@@ -85,7 +87,72 @@ class TabsController:
         tab["method"] = clean_method
         tab["url"] = clean_url
         self.items[self.current_index] = tab
+        self.items = list(self.items)
         return True
+
+    def update_current_active_request_tab(self, index: int) -> bool:
+        if not (0 <= self.current_index < len(self.items)):
+            return False
+        tab = dict(self.items[self.current_index])
+        normalized = max(0, int(index or 0))
+        if int(tab.get("activeRequestTab") or 0) == normalized:
+            return False
+        tab["activeRequestTab"] = normalized
+        self.items[self.current_index] = tab
+        self.items = list(self.items)
+        if tab.get("kind") == "case":
+            self._save_case_snapshot(str(tab.get("nodeId") or ""), snapshot_from_tab(tab))
+        else:
+            self._save_tab_draft(tab)
+        return True
+
+    def rename_node_tabs(self, node_id: str, name: str) -> bool:
+        clean_node_id = str(node_id or "")
+        clean_name = str(name or "").strip()
+        if not clean_node_id or not clean_name:
+            return False
+        changed = False
+        for index, item in enumerate(self.items):
+            if item.get("nodeId") != clean_node_id or item.get("name") == clean_name:
+                continue
+            tab = dict(item)
+            tab["name"] = clean_name
+            self.items[index] = tab
+            if tab.get("kind") == "case":
+                self._save_case_snapshot(str(tab.get("nodeId") or ""), snapshot_from_tab(tab))
+            else:
+                self._save_tab_draft(tab)
+            changed = True
+        if changed:
+            self.items = list(self.items)
+        return changed
+
+    def sync_node_tab(self, node_id: str, name: str, method: str, url: str) -> bool:
+        clean_node_id = str(node_id or "")
+        if not clean_node_id:
+            return False
+        changed = False
+        for index, item in enumerate(self.items):
+            if item.get("nodeId") != clean_node_id:
+                continue
+            tab = dict(item)
+            if str(name or "").strip() and tab.get("name") != str(name or "").strip():
+                tab["name"] = str(name or "").strip()
+            if method and tab.get("method") != method:
+                tab["method"] = method
+            if url and tab.get("url") != url:
+                tab["url"] = url
+            if tab == item:
+                continue
+            self.items[index] = tab
+            if tab.get("kind") == "case":
+                self._save_case_snapshot(str(tab.get("nodeId") or ""), snapshot_from_tab(tab))
+            else:
+                self._save_tab_draft(tab)
+            changed = True
+        if changed:
+            self.items = list(self.items)
+        return changed
 
     def open_endpoint(self, name: str, method: str, url: str, node_id: str, environments: list[dict]) -> bool:
         return self.open_request(name, method, url, node_id, "endpoint", {}, environments)
@@ -113,7 +180,9 @@ class TabsController:
     ) -> bool:
         for index, tab in enumerate(self.items):
             if node_id and tab.get("nodeId") == node_id:
+                self.persist_current()
                 self.current_index = index
+                self.sync_node_tab(node_id, name, method, url)
                 self.apply_current_to_editor(environments)
                 return False
         snapshot = request_snapshot or {}

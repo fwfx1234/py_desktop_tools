@@ -13,6 +13,8 @@ Window {
     property var pluginData: ({})
     property int initialWidth: 800
     property int initialHeight: 600
+    property bool alwaysOnTop: false
+    property bool isMacos: typeof app !== "undefined" && app ? app.isMacos : false
     property bool retainOnClose: true
     signal retainedCloseRequested(string pluginId)
 
@@ -22,6 +24,7 @@ Window {
     minimumHeight: 480
     title: pluginName || "插件"
     color: Theme.token("color-bg-page", dark)
+    flags: ((isMacos && alwaysOnTop) ? Qt.Tool : Qt.Window) | (alwaysOnTop ? Qt.WindowStaysOnTopHint : 0)
 
     readonly property bool dark: typeof app !== "undefined" && app ? app.theme === "dark" : false
     readonly property bool pluginPageReady: pageLoader.status === Loader.Ready

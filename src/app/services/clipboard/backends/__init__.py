@@ -2,6 +2,7 @@ from __future__ import annotations
 
 __all__ = [
     "ClipboardBackend",
+    "MacOSClipboardBackend",
     "NoopClipboardBackend",
     "PyperclipClipboardBackend",
     "Win32ClipboardBackend",
@@ -13,6 +14,10 @@ def __getattr__(name: str):
         from .protocol import ClipboardBackend
 
         return ClipboardBackend
+    if name == "MacOSClipboardBackend":
+        from .macos_backend import MacOSClipboardBackend
+
+        return MacOSClipboardBackend
     if name == "NoopClipboardBackend":
         from .noop_backend import NoopClipboardBackend
 

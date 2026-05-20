@@ -33,6 +33,10 @@ class CommandService:
         self._launcher = CommandLauncher(index_db, platform_services)
         self._usage = CommandUsageService(index_db)
 
+    @property
+    def app_scan_running(self) -> bool:
+        return self._app_index.scan_running
+
     def search(self, query: str, context: LauncherContext | None = None) -> list[dict]:
         q = query.strip()
         context = context or build_launcher_context(q, self.known_prefixes())
@@ -44,8 +48,7 @@ class CommandService:
             + self._dynamic_items(score_query, context)
             + self._system_items(score_query)
         )
-        if not self._app_index.scan_running:
-            items += self._app_items(score_query)
+        items += self._app_items(score_query)
         usage = self._usage.usage_map()
         for item in items:
             use_count, last_used = usage.get(item["usageKey"], (0, ""))
@@ -74,6 +77,19 @@ class CommandService:
 
     def start_app_scan(self, *, force: bool = False) -> bool:
         return self._app_index.start_scan(force=force)
+
+    def check_app_index_changes(self, *, force: bool = False) -> bool:
+        return self._app_index.start_change_check(force=force)
+
+    def search_apps(self, query: str, *, limit: int = 50) -> list[dict]:
+        self._app_index.ensure_scan_started()
+        return self._index_db.search_apps(query, limit=limit)
+
+    def count_apps(self) -> int:
+        return self._index_db.count_apps()
+
+    def shutdown(self) -> None:
+        self._app_index.shutdown()
 
     def known_prefixes(self) -> set[str]:
         prefixes: set[str] = set()
@@ -239,7 +255,13 @@ class CommandService:
         apps = self._index_db.search_apps(query, limit=30 if query else 20)
         out: list[dict] = []
         for app in apps:
-            score, start, length = CommandRanker.score(query, app["name"], [app["initials"]], "")
+            aliases = [str(alias) for alias in app.get("aliases", [])]
+            keywords = [
+                str(app.get("initials") or ""),
+                *aliases,
+                str(app.get("searchText") or ""),
+            ]
+            score, start, length = CommandRanker.score(query, app["name"], keywords, "")
             icon = (
                 "file:///" + app["iconPath"].replace("\\", "/")
                 if app["iconPath"]

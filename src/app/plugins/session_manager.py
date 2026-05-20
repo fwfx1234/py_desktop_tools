@@ -166,7 +166,7 @@ class PluginSessionManager:
                 record.last_action = action
                 self._mark_session_active(record, preferred_host)
                 self._reactivate_session(record, action)
-                self._log.info(
+                self._log.debug(
                     "plugin.session.reuse",
                     "复用插件会话",
                     pluginId=plugin_id,
@@ -191,7 +191,7 @@ class PluginSessionManager:
             session_id=session_id,
         )
         self._sessions[plugin_id] = record
-        self._log.info(
+        self._log.debug(
             "plugin.session.open",
             "打开插件会话",
             pluginId=plugin_id,
@@ -288,7 +288,7 @@ class PluginSessionManager:
             )
             record.retain_timer = timer
         timer.start(self._retention_ms)
-        self._log.info(
+        self._log.debug(
             "plugin.session.suspend",
             "挂起插件会话",
             pluginId=plugin_id,
@@ -317,7 +317,7 @@ class PluginSessionManager:
                     sessionId=record.session_id,
                     error=str(exc),
                 )
-            self._log.info(
+            self._log.debug(
                 "plugin.session.unload",
                 "卸载插件会话",
                 pluginId=plugin_id,
@@ -488,7 +488,7 @@ class PluginSessionManager:
         if record is None:
             return
         expired_state = record.state
-        self._log.info(
+        self._log.debug(
             "plugin.session.retention_expired",
             "插件会话保留到期",
             pluginId=plugin_id,

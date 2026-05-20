@@ -38,7 +38,7 @@ class ClipboardService:
             self._log.warning("clipboard.backend.start_failed", "剪切板 backend 启动失败", error=str(exc))
             raise
         self._started = True
-        self._log.info("clipboard.service.start", "剪切板服务启动", backend=type(self._backend).__name__)
+        self._log.debug("clipboard.service.start", "剪切板服务启动", backend=type(self._backend).__name__)
 
     def add_history_listener(self, callback: Callable[[], None]) -> None:
         with self._listener_lock:
@@ -60,8 +60,29 @@ class ClipboardService:
             if callback in self._config_listeners:
                 self._config_listeners.remove(callback)
 
-    def search(self, query: str) -> list[dict]:
-        return self.store.search(query)
+    def search(
+        self,
+        query: str,
+        *,
+        filter_type: str = "all",
+        offset: int = 0,
+        limit: int | None = None,
+    ) -> list[dict]:
+        return self.store.search(
+            query,
+            filter_type=filter_type,
+            offset=offset,
+            limit=limit,
+        )
+
+    def count(self, query: str = "", *, filter_type: str = "all") -> int:
+        return self.store.count(query, filter_type=filter_type)
+
+    def promote_item(self, item_id: int) -> bool:
+        promoted = self.store.promote_item(item_id)
+        if promoted:
+            self._notify_history_changed()
+        return promoted
 
     def latest_item(self) -> dict | None:
         return self.store.latest_item()
@@ -71,6 +92,55 @@ class ClipboardService:
 
     def latest_context_item(self) -> dict | None:
         return self.latest_captured_item() or self.latest_item()
+
+    def read_live_item(self) -> dict | None:
+        """Read the current system pasteboard directly, bypassing history capture.
+
+        Returns a dict shaped like the history items (``itemType`` + ``content``
+        + ``metadata``) when something is on the pasteboard, otherwise ``None``.
+        Used by plugins that need the freshest clipboard content without
+        depending on the watcher having caught it yet.
+        """
+        backend = getattr(self, "_backend", None)
+        read_current = getattr(backend, "read_current", None)
+        if not callable(read_current):
+            return None
+        try:
+            draft = read_current()
+        except Exception:
+            return None
+        if draft is None:
+            return None
+        item_type = getattr(draft, "item_type", "")
+        content = getattr(draft, "content", "") or ""
+        metadata = dict(getattr(draft, "metadata", {}) or {})
+        if item_type == "image" and not content:
+            image_bytes = getattr(draft, "image_bytes", b"") or b""
+            if image_bytes:
+                cached = self._cache_live_image(image_bytes)
+                if cached:
+                    content = cached
+        if not content and item_type != "image":
+            return None
+        return {
+            "itemType": item_type,
+            "content": content,
+            "metadata": metadata,
+        }
+
+    def _cache_live_image(self, image_bytes: bytes) -> str:
+        try:
+            target_dir = self.store.image_dir
+            target_dir.mkdir(parents=True, exist_ok=True)
+            from hashlib import sha1
+
+            digest = sha1(image_bytes).hexdigest()[:12]
+            target = target_dir / f"live_{digest}.png"
+            if not target.exists():
+                target.write_bytes(image_bytes)
+            return str(target)
+        except Exception:
+            return ""
 
     def get_item(self, item_id: int) -> dict | None:
         return self.store.get_item(item_id)
@@ -84,6 +154,12 @@ class ClipboardService:
 
     def clear_all(self) -> bool:
         cleared = self.store.clear_all()
+        if cleared:
+            self._notify_history_changed()
+        return cleared
+
+    def clear_unpinned(self) -> bool:
+        cleared = self.store.clear_unpinned()
         if cleared:
             self._notify_history_changed()
         return cleared
@@ -138,7 +214,10 @@ class ClipboardService:
         item = self.store.get_item(item_id)
         if item is None:
             return False
-        return self.copy_item(item)
+        copied = self.copy_item(item)
+        if copied:
+            self.promote_item(item_id)
+        return copied
 
     def close(self) -> None:
         try:
@@ -147,7 +226,7 @@ class ClipboardService:
             self._log.warning("clipboard.backend.stop_failed", "剪切板 backend 停止失败", error=str(exc))
         self.store.close()
         self._started = False
-        self._log.info("clipboard.service.stop", "剪切板服务停止")
+        self._log.debug("clipboard.service.stop", "剪切板服务停止")
 
     def _handle_backend_change(self, draft) -> None:
         try:

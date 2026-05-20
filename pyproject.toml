@@ -18,23 +18,46 @@ dependencies = [
     "pypinyin>=0.50.0",
     "pylnk3>=0.4.2; sys_platform == 'win32'",
     "pynput>=1.7.7; sys_platform == 'darwin'",
+    "pyobjc-framework-cocoa>=10.0; sys_platform == 'darwin'",
+    "paramiko>=5.0.0",
+    "mitmproxy>=11.0.2",
 ]
 
 [dependency-groups]
 build = [
     "pyinstaller>=6.0",
 ]
+test = [
+    "pytest>=8.0",
+]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = [
+    "-v",
+    "--tb=short",
+    "--strict-markers",
+    "--color=yes",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "unit: unit tests (pure logic, no I/O)",
+    "integration: integration tests (real DB or network)",
+    "contract: contract/API surface tests",
+]
 
 [project.scripts]
 app = "app.main:main"
 
+[[tool.uv.index]]
+url = "https://mirrors.aliyun.com/pypi/simple/"
+default = true
+
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
-
-[[tool.uv.index]]
-url = "https://pypi.tuna.tsinghua.edu.cn/simple"
-default = true
 
 [tool.setuptools.packages.find]
 where = ["src"]

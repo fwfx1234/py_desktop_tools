@@ -1,24 +1,21 @@
 from __future__ import annotations
 
-import json
-import pyperclip
-
 from PySide6.QtCore import QObject, Signal, Slot
+
+from .service import JsonService
 
 
 class JsonParserViewModel(QObject):
-    """Simple feature: pure string processing fits inside the ViewModel.
-
-    No service layer is needed because the logic has no IO, no threading and
-    is unlikely to be reused by other features.
-    """
-
-    jsonProcessed = Signal(str, str)
+    resultUpdated = Signal("QVariantMap")
     jsonCopied = Signal(bool, str)
     inputTextChanged = Signal(str)
+    inputFilled = Signal(str)
+    statusMessage = Signal(str, str)
 
-    def __init__(self, initial_text: str = "") -> None:
+    def __init__(self, initial_text: str = "", platform_api: object | None = None) -> None:
         super().__init__()
+        self._service = JsonService()
+        self._platform = platform_api
         self._input_text = initial_text
 
     @Slot(result=str)
@@ -32,71 +29,72 @@ class JsonParserViewModel(QObject):
         self._input_text = text
         self.inputTextChanged.emit(text)
 
+    @Slot(str)
+    def formatJson(self, text: str) -> None:
+        self._emit(self._service.format(text), mode="format")
+
+    @Slot(str)
+    def compressJson(self, text: str) -> None:
+        self._emit(self._service.compress(text), mode="compress")
+
+    @Slot(str, str)
+    def queryJson(self, text: str, expression: str) -> None:
+        self._emit(self._service.query(text, expression), mode="query")
+
     @Slot(str, str)
     def processJson(self, jsonText: str, query: str) -> None:
-        text, error = self._process(jsonText, query)
-        self.jsonProcessed.emit(text, error)
+        if query.strip():
+            self.queryJson(jsonText, query)
+        else:
+            self.formatJson(jsonText)
 
     @Slot(str)
     def copyText(self, text: str) -> None:
-        try:
-            pyperclip.copy(text or "")
+        if not text:
+            self.jsonCopied.emit(False, "无可复制内容")
+            return
+        ok = self._write_clipboard(text)
+        if ok:
             self.jsonCopied.emit(True, "已复制到剪贴板")
-        except Exception as exc:
-            self.jsonCopied.emit(False, f"复制失败: {exc}")
+        else:
+            self.jsonCopied.emit(False, "复制失败")
 
-    def _process(self, json_text: str, query: str) -> tuple[str, str]:
+    @Slot()
+    def fillFromClipboard(self) -> None:
+        if self._platform is None:
+            self.statusMessage.emit("剪贴板不可用", "error")
+            return
         try:
-            parsed = json.loads(json_text) if json_text.strip() else None
-        except Exception as exc:
-            return "", f"JSON 解析错误: {exc}"
-        if parsed is None:
-            return "", ""
-        if not query.strip():
-            return json.dumps(parsed, ensure_ascii=False, indent=2), ""
-        try:
-            value = self._query_json(parsed, query.strip())
-            return json.dumps(value, ensure_ascii=False, indent=2), ""
-        except Exception as exc:
-            return "", f"查询错误: {exc}"
+            text = self._platform.clipboard.read_text() or ""
+        except Exception:
+            text = ""
+        if not text.strip():
+            self.statusMessage.emit("剪贴板为空", "info")
+            return
+        self.setInputText(text)
+        self.inputFilled.emit(text)
 
-    def _query_json(self, data, query: str):
-        if not query.startswith("$"):
-            raise ValueError("查询语法必须以 $ 开头")
-        if query == "$":
-            return data
-        # 解析路径段，支持 .key 和 [index] 以及 key[0][1] 组合
-        path = query[1:]  # 去掉开头的 $
-        cur = data
-        i = 0
-        while i < len(path):
-            if path[i] == ".":
-                i += 1
-                continue
-            if path[i] == "[":
-                # 数组索引 [...]
-                j = path.index("]", i)
-                idx = int(path[i + 1:j])
-                cur = cur[idx]
-                i = j + 1
-            else:
-                # 对象键
-                j = i
-                while j < len(path) and path[j] not in (".", "["):
-                    j += 1
-                key = path[i:j]
-                if j < len(path) and path[j] == "[":
-                    # key 后跟 [index]，如 key[0]
-                    i = j
-                    while i < len(path) and path[i] == "[":
-                        k = path.index("]", i)
-                        idx = int(path[i + 1:k])
-                        cur = cur[key][idx]
-                        i = k + 1
-                        # 跳过连续的 ]... 之间的 .
-                        if i < len(path) and path[i] == ".":
-                            i += 1
-                else:
-                    cur = cur[key]
-                    i = j
-        return cur
+    def _emit(self, result, *, mode: str) -> None:
+        payload = {
+            "output": result.output,
+            "error": result.error,
+            "errorLine": result.error_line,
+            "errorColumn": result.error_column,
+            "errorPhase": result.error_phase,
+            "charCount": result.char_count,
+            "lineCount": result.line_count,
+            "kind": result.kind,
+            "size": result.size,
+            "depth": result.depth,
+            "mode": mode,
+        }
+        self.resultUpdated.emit(payload)
+
+    def _write_clipboard(self, text: str) -> bool:
+        if self._platform is None:
+            return False
+        try:
+            result = self._platform.clipboard.write_text(text)
+        except Exception:
+            return False
+        return bool(getattr(result, "success", False))

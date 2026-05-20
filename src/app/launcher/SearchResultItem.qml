@@ -24,9 +24,9 @@ Rectangle {
     readonly property bool _useFile: pluginIcon.indexOf("file:///") === 0
     readonly property string _qtaName: _useQta ? pluginIcon.slice(4) : ""
 
-    implicitHeight: 56
-    radius: 6
-    color: isSelected ? Theme.token("color-bg-subtle", dark) : "transparent"
+    implicitHeight: 60
+    radius: 8
+    color: isSelected ? (dark ? "#18243A" : "#EFF6FF") : "transparent"
 
     RowLayout {
         anchors.fill: parent
@@ -36,13 +36,13 @@ Rectangle {
 
         // 图标
         Rectangle {
-            Layout.preferredWidth: 36
-            Layout.preferredHeight: 36
+            Layout.preferredWidth: 40
+            Layout.preferredHeight: 40
             Layout.alignment: Qt.AlignVCenter
             radius: 8
             color: isSelected
-                ? Theme.token("color-primary-bg", dark)
-                : Theme.token("color-bg-subtle", dark)
+                ? (dark ? "#123044" : "#DBEAFE")
+                : (dark ? "#202B3F" : "#EEF2F7")
 
             // QtAwesome 图标
             Image {
@@ -63,10 +63,11 @@ Rectangle {
                 anchors.fill: parent
                 anchors.margins: 4
                 source: root._useFile ? root.pluginIcon : ""
-                sourceSize.width: 28
-                sourceSize.height: 28
+                sourceSize.width: 32
+                sourceSize.height: 32
                 fillMode: Image.PreserveAspectFit
                 smooth: true
+                asynchronous: true
             }
 
             // SVG 图标
@@ -173,6 +174,10 @@ Rectangle {
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
+        scrollGestureEnabled: false
         onClicked: root.activated()
+        onWheel: function (wheel) {
+            wheel.accepted = false;
+        }
     }
 }

@@ -109,6 +109,22 @@ class ClipboardHistoryStore:
                 ).fetchone()
                 if latest and latest["item_type"] == item_type and latest["content"] == content:
                     return False
+                existing = conn.execute(
+                    """
+                    SELECT pinned
+                    FROM clipboard_history
+                    WHERE item_type = ? AND content = ?
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """,
+                    (item_type, content),
+                ).fetchone()
+                if existing is not None:
+                    pinned = bool(existing["pinned"]) or pinned
+                    conn.execute(
+                        "DELETE FROM clipboard_history WHERE item_type = ? AND content = ?",
+                        (item_type, content),
+                    )
                 created_at = datetime.now().strftime("%m-%d %H:%M:%S")
                 metadata_json = json.dumps(metadata or {}, ensure_ascii=False)
                 conn.execute(
@@ -128,32 +144,117 @@ class ClipboardHistoryStore:
                 )
         return True
 
-    def search(self, query: str) -> list[dict]:
-        q = query.strip()
+    def promote_item(self, item_id: int) -> bool:
+        item = self.get_item(item_id)
+        if item is None:
+            return False
+        item_type = str(item.get("itemType") or "text")
+        content = str(item.get("content") or "")
+        if not content:
+            return False
         with self._lock:
             with self._database.connection(row_factory=SQLiteRow) as conn:
-                if not q:
-                    rows = conn.execute(
-                        """
-                        SELECT id, item_type, content, preview, metadata, pinned, created_at
-                        FROM clipboard_history
-                        ORDER BY pinned DESC, id DESC
-                        LIMIT 100
-                        """
-                    ).fetchall()
-                else:
-                    like = f"%{q}%"
-                    rows = conn.execute(
-                        """
-                        SELECT id, item_type, content, preview, metadata, pinned, created_at
-                        FROM clipboard_history
-                        WHERE content LIKE ? OR preview LIKE ?
-                        ORDER BY pinned DESC, id DESC
-                        LIMIT 100
-                        """,
-                        (like, like),
-                    ).fetchall()
+                latest = conn.execute(
+                    """
+                    SELECT id, item_type, content
+                    FROM clipboard_history
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """
+                ).fetchone()
+                if latest is not None and int(latest["id"]) == item_id:
+                    return False
+                if (
+                    latest is not None
+                    and latest["item_type"] == item_type
+                    and latest["content"] == content
+                ):
+                    return False
+                conn.execute(
+                    "DELETE FROM clipboard_history WHERE item_type = ? AND content = ?",
+                    (item_type, content),
+                )
+                conn.execute(
+                    """
+                    INSERT INTO clipboard_history
+                        (item_type, content, preview, metadata, pinned, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        item_type,
+                        content,
+                        str(item.get("preview") or ""),
+                        json.dumps(item.get("metadata") or {}, ensure_ascii=False),
+                        1 if item.get("pinned") else 0,
+                        datetime.now().strftime("%m-%d %H:%M:%S"),
+                    ),
+                )
+        return True
+
+    def search(
+        self,
+        query: str,
+        *,
+        filter_type: str = "all",
+        offset: int = 0,
+        limit: int | None = None,
+    ) -> list[dict]:
+        q = query.strip()
+        filter_value = str(filter_type or "all")
+        conditions: list[str] = []
+        params: list[object] = []
+        if filter_value == "pinned":
+            conditions.append("pinned = 1")
+        elif filter_value in {"text", "image", "files"}:
+            conditions.append("item_type = ?")
+            params.append(filter_value)
+        if q:
+            like = f"%{q}%"
+            conditions.append("(content LIKE ? OR preview LIKE ?)")
+            params.extend([like, like])
+        where_sql = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        limit_sql = ""
+        if limit is not None and int(limit) > 0:
+            limit_sql = "LIMIT ? OFFSET ?"
+            params.extend([int(limit), max(0, int(offset))])
+        with self._lock:
+            with self._database.connection(row_factory=SQLiteRow) as conn:
+                rows = conn.execute(
+                    f"""
+                    SELECT id, item_type, content, preview, metadata, pinned, created_at
+                    FROM clipboard_history
+                    {where_sql}
+                    ORDER BY pinned DESC, id DESC
+                    {limit_sql}
+                    """,
+                    tuple(params),
+                ).fetchall()
         return [self._row_to_dict(row) for row in rows]
+
+    def count(self, query: str = "", *, filter_type: str = "all") -> int:
+        q = query.strip()
+        filter_value = str(filter_type or "all")
+        conditions: list[str] = []
+        params: list[object] = []
+        if filter_value == "pinned":
+            conditions.append("pinned = 1")
+        elif filter_value in {"text", "image", "files"}:
+            conditions.append("item_type = ?")
+            params.append(filter_value)
+        if q:
+            like = f"%{q}%"
+            conditions.append("(content LIKE ? OR preview LIKE ?)")
+            params.extend([like, like])
+        where_sql = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        with self._lock:
+            with self._database.connection() as conn:
+                row = conn.execute(
+                    f"SELECT COUNT(*) FROM clipboard_history {where_sql}",
+                    tuple(params),
+                ).fetchone()
+        if row is None:
+            return 0
+        return int(row[0])
 
     def get_item(self, item_id: int) -> dict | None:
         with self._lock:
@@ -206,6 +307,17 @@ class ClipboardHistoryStore:
                 if row is None or int(row[0]) <= 0:
                     return False
                 conn.execute("DELETE FROM clipboard_history")
+        return True
+
+    def clear_unpinned(self) -> bool:
+        with self._lock:
+            with self._database.connection() as conn:
+                row = conn.execute(
+                    "SELECT COUNT(*) FROM clipboard_history WHERE pinned = 0"
+                ).fetchone()
+                if row is None or int(row[0]) <= 0:
+                    return False
+                conn.execute("DELETE FROM clipboard_history WHERE pinned = 0")
         return True
 
     def delete_item(self, item_id: int) -> bool:

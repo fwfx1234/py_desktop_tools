@@ -1,0 +1,24 @@
+{
+  "id": "quick-launch",
+  "name": "快速启动",
+  "version": "1.0.0",
+  "description": "管理项目脚本与动作，并把启用项注册到启动器搜索",
+  "icon": "qta:fa5s.bolt",
+  "entrypoint": "runtime:create_runtime",
+  "qmlPage": "QuickLaunchWindowPage.qml",
+  "contextProperty": "quickLaunchVm",
+  "category": "tool",
+  "order": 5,
+  "activation": "background",
+  "commands": [
+    {
+      "id": "quick-launch.open",
+      "title": "快速启动",
+      "subtitle": "管理项目与脚本动作",
+      "icon": "qta:fa5s.bolt",
+      "keywords": ["快速", "启动", "脚本", "命令", "quick", "launch"],
+      "prefixes": ["ql", "quick"],
+      "launchMode": "window"
+    }
+  ]
+}

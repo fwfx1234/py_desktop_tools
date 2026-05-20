@@ -15,7 +15,10 @@ QtObject {
 
     readonly property var space: ({ "1": 4, "2": 8, "2.5": 10, "3": 12, "4": 16 })
     readonly property var radii: ({ xs: 4, sm: 6, md: 8, lg: 10, xl: 12 })
-    readonly property var fontFamily: ({ ui: "Microsoft YaHei UI", mono: "Consolas" })
+    readonly property var fontFamily: ({
+        ui: Qt.application.font.family,
+        mono: Qt.platform.os === "osx" ? "Menlo" : "Consolas"
+    })
     readonly property var fontSize: ({ title: 20, heading: 15, body: 13, mono: 12, nav: 13, caption: 11 })
 
     readonly property var tokensLight: ({
@@ -58,9 +61,9 @@ QtObject {
         "color-bg-subtle": "#121C2F",
         "color-bg-subtle-2": "#111827",
         "color-border-default": "#3A4658",
-        "color-text-primary": "#333333",
-        "color-text-regular": "#333333",
-        "color-text-secondary": "#64748B",
+        "color-text-primary": "#F8FAFC",
+        "color-text-regular": "#CBD5E1",
+        "color-text-secondary": "#94A3B8",
         "color-primary": "#8B5CF6",
         "color-primary-hover": "#C4B5FD",
         "color-primary-active": "#7C3AED",

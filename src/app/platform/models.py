@@ -71,6 +71,7 @@ class AppEntry:
     launch_path: str
     bundle_id: str = ""
     icon_path: str = ""
+    aliases: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_db_dict(self) -> dict:
@@ -80,6 +81,7 @@ class AppEntry:
             "launch_path": self.launch_path,
             "bundle_id": self.bundle_id,
             "icon_path": self.icon_path,
+            "aliases": self.aliases,
         }
 
 

@@ -6,4 +6,4 @@ from .view_model import PacketCaptureViewModel
 
 
 def create_runtime() -> SimpleQmlRuntime:
-    return SimpleQmlRuntime(lambda _ctx: PacketCaptureViewModel())
+    return SimpleQmlRuntime(lambda ctx: PacketCaptureViewModel(platform_api=ctx.platform))

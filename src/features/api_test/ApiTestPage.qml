@@ -13,8 +13,8 @@ Item {
     // ---- UI-only properties (layout, theme) ----
     property int currentTab: 0
     property real sidebarWidth: 260
-    property real requestPanelRatio: 0.40
-    property real requestPanelHeight: 0
+    property real responsePanelRatio: 0.44
+    property real responsePanelWidth: 0
     property int activeBodyRow: -1
     property bool showMagicPanel: false
     property bool applyingTabToActionBar: false
@@ -23,7 +23,7 @@ Item {
 
     enabled: !!apiTestVm
 
-    readonly property bool dark: appVm.theme === "dark"
+    readonly property bool dark: appVm ? appVm.theme === "dark" : false
     readonly property color panelBg: Theme.token("color-bg-surface", dark)
     readonly property color panelBorder: Theme.token("color-bg-subtle-2", dark)
     readonly property color sidebarBg: Theme.token("color-bg-subtle-2", dark)
@@ -32,20 +32,48 @@ Item {
     readonly property color textSubtle: Theme.token("color-text-secondary", dark)
     readonly property color tableHeaderBg: Theme.token("color-table-header", dark)
     readonly property color softBorder: Qt.rgba(panelBorder.r, panelBorder.g, panelBorder.b, 0.55)
+    readonly property var emptyRows: []
+    readonly property var endpointTabsModel: vm ? vm.endpointTabs : emptyRows
+    readonly property int currentEndpointTabIndex: vm ? vm.currentEndpointTab : -1
+    readonly property var environmentsModel: vm ? vm.environments : emptyRows
+    readonly property int currentEnvironmentIndex: vm ? vm.currentEnvIndex : 0
+    readonly property var collectionTreeModel: vm ? vm.collectionTree : emptyRows
+    readonly property bool requestSendingValue: vm ? vm.requestSending : false
+    readonly property string wsStatusValue: vm ? vm.wsStatus : "idle"
+    readonly property string wsStatusTextValue: vm ? vm.wsStatusText : "未连接"
+    readonly property string wsEncodingValue: vm ? vm.wsEncoding : "text"
+    readonly property bool mockModeValue: vm ? vm.mockMode : false
+    readonly property bool assertionsEnabledValue: vm ? vm.assertionsEnabled : true
+    readonly property string responseTitleValue: vm ? vm.responseTitle : "返回响应"
+    readonly property string responseStatusCodeValue: vm ? vm.responseStatusCode : ""
+    readonly property string responseElapsedMsValue: vm ? vm.responseElapsedMs : ""
+    readonly property string responseFinalUrlValue: vm ? vm.responseFinalUrl : ""
+    readonly property string responseOutcomeValue: vm ? vm.responseOutcome : "idle"
+    readonly property string responseBodyValue: vm ? vm.responseBody : ""
+    readonly property string responseBodyHtmlValue: vm ? vm.responseBodyHtml : ""
+    readonly property string responseHeadersValue: vm ? vm.responseHeaders : ""
+    readonly property string responseRequestValue: vm ? vm.responseRequest : ""
+    readonly property string responseCurlValue: vm ? vm.responseCurl : ""
+    readonly property string responseLogValue: vm ? vm.responseLog : ""
+    readonly property var responseLogsModel: vm ? vm.responseLogs : emptyRows
 
     // ---- helpers that need QML element access ----
     function currentTabId() {
-        var tabs = vm.endpointTabs
-        var idx = vm.currentEndpointTab
+        var tabs = root.endpointTabsModel
+        var idx = root.currentEndpointTabIndex
         return (idx >= 0 && idx < tabs.length) ? tabs[idx].id : ""
     }
     function endpointKey() {
-        return ApiUtils.normalizeMethod(requestActionBar.getMethodText()) + " " + (requestActionBar.getUrlText() || "/")
+        return ApiUtils.normalizeMethod(requestActionBar.getMethodText()) + " " + root.currentRequestUrl()
     }
     function currentEnvBaseUrl() {
-        var envs = vm.environments
-        var idx = vm.currentEnvIndex
+        var envs = root.environmentsModel
+        var idx = root.currentEnvironmentIndex
         return (idx >= 0 && idx < envs.length) ? (envs[idx].baseUrl || "") : ""
+    }
+    function currentRequestUrl() {
+        var tab = root.endpointTabsModel[root.currentEndpointTabIndex] || {}
+        return tab.url || "/"
     }
     function methodColor(method) {
         var m = {"GET": Theme.token("color-method-get", dark), "POST": Theme.token("color-method-post", dark),
@@ -66,11 +94,11 @@ Item {
 
     // ---- actions that assemble QML data → ViewModel ----
     function sendCurrent() {
-        if (!apiTestVm || vm.requestSending) return
+        if (!apiTestVm || root.requestSendingValue) return
         apiTestVm.persistCurrentTabDraft()
         apiTestVm.sendRequest({
             method: requestActionBar.getMethodText(),
-            url: requestActionBar.getUrlText(),
+            url: root.currentRequestUrl(),
             paramsText: ApiUtils.buildKvText(vm.pathParams) + "\n" + ApiUtils.buildKvText(vm.queryParams),
             headersText: ApiUtils.buildHeaderText(vm.headersRows),
             bodyText: bodyTextForRequest(),
@@ -96,11 +124,11 @@ Item {
     }
     function saveCurrentAsDebugCase() {
         if (!apiTestVm) return
-        var tab = vm.endpointTabs[vm.currentEndpointTab] || {}
+        var tab = root.endpointTabsModel[root.currentEndpointTabIndex] || {}
         apiTestVm.saveDebugCaseData({
             endpointKey: endpointKey(), caseId: "",
             name: "调试用例 " + (vm.debugCases.length + 1),
-            method: requestActionBar.getMethodText(), url: requestActionBar.getUrlText(),
+            method: requestActionBar.getMethodText(), url: root.currentRequestUrl(),
             requestMode: vm.mockMode ? "mock" : ApiUtils.requestModeForMethod(requestActionBar.getMethodText()),
             bodyMode: currentBodyModeName(),
             authType: vm.authTypeValue, authValue: vm.authValueText,
@@ -121,17 +149,17 @@ Item {
         return (idx >= 0 && idx < modes.length) ? modes[idx] : "none"
     }
     function syncRequestActionBarFromCurrentTab() {
-        var idx = vm.currentEndpointTab
-        if (idx < 0 || idx >= vm.endpointTabs.length) return
-        var tab = vm.endpointTabs[idx] || {}
+        var idx = root.currentEndpointTabIndex
+        if (idx < 0 || idx >= root.endpointTabsModel.length) return
+        var tab = root.endpointTabsModel[idx] || {}
         root.applyingTabToActionBar = true
         requestActionBar.setMethodText(tab.method || "GET")
-        requestActionBar.setUrlText(tab.url || "/")
+        requestActionBar.setPathText(tab.url || "/")
         root.applyingTabToActionBar = false
     }
     function updateCurrentTreeEndpoint(methodText, pathText) {
         if (root.applyingTabToActionBar || !apiTestVm) return
-        var tab = vm.endpointTabs[vm.currentEndpointTab]
+        var tab = root.endpointTabsModel[root.currentEndpointTabIndex]
         if (!tab) return
         apiTestVm.updateCurrentTabRequest(methodText || "GET", pathText || "/")
         if (tab.kind === "case") {
@@ -140,23 +168,11 @@ Item {
         }
         apiTestVm.updateCollectionEndpoint(tab.nodeId || "", methodText || "GET", pathText || "/")
         apiTestVm.persistCurrentTabDraft()
-    }
-    function autoParseUrlParams(urlText) {
-        var q = (urlText || "").split("?")[1]
-        if (!q || q.length === 0) return
-        var rows = []
-        var pairs = q.split("&")
-        for (var i = 0; i < pairs.length; i++) {
-            var eq = pairs[i].indexOf("=")
-            var k = eq >= 0 ? decodeURIComponent(pairs[i].slice(0, eq)) : decodeURIComponent(pairs[i])
-            var v = eq >= 0 ? decodeURIComponent(pairs[i].slice(eq + 1)) : ""
-            if (k) rows.push({ enabled: true, key: k, value: v, type: "string", desc: "" })
-        }
-        if (apiTestVm && rows.length > 0) apiTestVm.queryParams = ApiUtils.normalizeQueryRows(rows)
+        apiTestVm.loadCollectionTree()
     }
     function connectWs() {
         if (!apiTestVm) return
-        apiTestVm.wsConnect(currentTabId(), requestActionBar.getUrlText(),
+        apiTestVm.wsConnect(currentTabId(), root.currentRequestUrl(),
             ApiUtils.buildKvText(vm.queryParams), ApiUtils.buildHeaderText(vm.headersRows),
             ApiUtils.buildCookieText(vm.cookieRows), currentEnvBaseUrl())
     }
@@ -166,8 +182,35 @@ Item {
         if (!apiTestVm) return
         apiTestVm.updateCurrentTabRequest(methodText || "GET", urlText || "/")
         requestActionBar.setMethodText(methodText || "GET")
-        requestActionBar.setUrlText(urlText || "/")
+        requestActionBar.setPathText(urlText || "/")
         apiTestVm.persistCurrentTabDraft()
+    }
+    function wsActionText() {
+        if (root.wsStatusValue === "connecting")
+            return "连接中"
+        if (root.wsStatusValue === "connected")
+            return "已连接"
+        if (root.wsStatusValue === "receiving")
+            return "接收中"
+        if (root.wsStatusValue === "disconnecting")
+            return "断开中"
+        if (root.wsStatusValue === "error")
+            return "连接失败"
+        return "就绪"
+    }
+    function wsStatusColor() {
+        if (root.wsStatusValue === "connected")
+            return Theme.token("color-success", root.dark)
+        if (root.wsStatusValue === "error")
+            return Theme.token("color-danger", root.dark)
+        if (root.wsStatusValue === "connecting" || root.wsStatusValue === "receiving" || root.wsStatusValue === "disconnecting")
+            return Theme.token("color-info", root.dark)
+        return root.textMuted
+    }
+    function wsDetailText() {
+        if (root.wsStatusValue === "idle" || root.wsStatusValue === "disconnected")
+            return ""
+        return root.wsStatusTextValue
     }
 
     // ---- background ----
@@ -191,7 +234,7 @@ Item {
                     id: collectionSidebar; anchors.fill: parent
                     dark: root.dark; panelBorder: root.panelBorder
                     textMain: root.textMain; textMuted: root.textMuted
-                    collectionTree: vm.collectionTree
+                    collectionTree: root.collectionTreeModel
                     qtaFn: root.qta; methodColorFn: root.methodColor
                     onImportRequested: openApiDialog.open()
                     onNodeCreated: function(parentId, kind, name, methodText, pathText) {
@@ -213,10 +256,12 @@ Item {
                     onNodeExpandedChanged: function(nodeId, expanded) { apiTestVm.setCollectionNodeExpanded(nodeId || "", expanded); apiTestVm.loadCollectionTree() }
                     onAllNodesExpandedChanged: function(expanded) { apiTestVm.setAllCollectionNodesExpanded(expanded); apiTestVm.loadCollectionTree() }
                     onEndpointSelected: function(name, methodText, pathText, nodeId) {
+                        apiTestVm.persistCurrentTabDraft()
                         apiTestVm.openEndpointTab(name, methodText, pathText || "/", nodeId || "")
                         root.syncRequestActionBarFromCurrentTab()
                     }
                     onCaseSelected: function(name, methodText, pathText, nodeId, requestSnapshot) {
+                        apiTestVm.persistCurrentTabDraft()
                         apiTestVm.openCaseTab(name, methodText, pathText || "/", nodeId || "", requestSnapshot || {})
                         root.syncRequestActionBarFromCurrentTab()
                     }
@@ -240,15 +285,16 @@ Item {
 
                 ApiEndpointTabsBar {
                     id: endpointTabsBar
-                    endpointTabs: vm.endpointTabs
-                    currentEndpointTab: vm.currentEndpointTab
-                    environments: vm.environments
-                    currentEnvIndex: vm.currentEnvIndex
+                    endpointTabs: root.endpointTabsModel
+                    currentEndpointTab: root.currentEndpointTabIndex
+                    environments: root.environmentsModel
+                    currentEnvIndex: root.currentEnvironmentIndex
                     dark: root.dark; panelBg: root.panelBg
                     textMain: root.textMain; textMuted: root.textMuted
                     methodColorFn: root.methodColor
                     envTagFn: ApiUtils.envTag; envTagColorFn: root.envTagColor
                     onTabClicked: function(index) {
+                        apiTestVm.persistCurrentTabDraft()
                         apiTestVm.currentEndpointTab = index
                         root.syncRequestActionBarFromCurrentTab()
                     }
@@ -269,10 +315,12 @@ Item {
                     id: requestActionBar
                     Layout.fillWidth: true; Layout.preferredHeight: 40
                     dark: root.dark; panelBg: root.panelBg; panelBorder: root.panelBorder
-                    textMuted: root.textMuted; sending: vm.requestSending
+                    textMuted: root.textMuted; sending: root.requestSendingValue
+                    baseUrlText: root.currentEnvBaseUrl()
+                    pathText: root.currentRequestUrl()
                     methodColorFn: root.methodColor
-                    onMethodTextChanged: function(value) { updateCurrentTreeEndpoint(value, requestActionBar.getUrlText()) }
-                    onUrlTextChanged: function(value) { autoParseUrlParams(value); updateCurrentTreeEndpoint(requestActionBar.getMethodText(), value) }
+                    onMethodTextChanged: function(value) { updateCurrentTreeEndpoint(value, requestActionBar.getPathText()) }
+                    onRequestPathEdited: function(value) { updateCurrentTreeEndpoint(requestActionBar.getMethodText(), value) }
                     onSendClicked: sendCurrent()
                 }
 
@@ -286,192 +334,129 @@ Item {
                         UiButton { text: "接收"; dark: root.dark; variant: "secondary"; onClicked: receiveWs() }
                         UiButton { text: "断开"; dark: root.dark; variant: "secondary"; onClicked: disconnectWs() }
                         Label {
-                            text: vm.wsStatusText
-                            color: vm.wsStatus === "connected"
-                                ? Theme.token("color-success", root.dark)
-                                : (vm.wsStatus === "error" ? Theme.token("color-danger", root.dark) : root.textMuted)
+                            text: root.wsActionText()
+                            color: root.wsStatusColor()
                             elide: Text.ElideRight
-                            Layout.maximumWidth: 260
+                            Layout.maximumWidth: 82
+                        }
+                        Label {
+                            text: root.wsDetailText()
+                            visible: text.length > 0
+                            color: root.textSubtle
+                            elide: Text.ElideMiddle
+                            Layout.maximumWidth: 240
                         }
                         Label { text: "编码"; color: root.textMuted }
                         UiComboBox {
                             dark: root.dark; Layout.preferredWidth: 100; Layout.preferredHeight: 28
                             model: [{ text: "text", value: "text" }, { text: "binary", value: "binary" }]
                             textRole: "text"; valueRole: "value"
-                            currentValue: vm.wsEncoding
+                            currentValue: root.wsEncodingValue
                             onCurrentValueChanged: if (apiTestVm) apiTestVm.wsEncoding = currentValue
                         }
                         Item { Layout.fillWidth: true }
                     }
                 }
 
-                ApiRequestTabsBar {
-                    Layout.fillWidth: true; Layout.preferredHeight: 36
-                    dark: root.dark; panelBg: root.panelBg; textMain: root.textMain
-                    currentTab: root.currentTab
-                    onTabChanged: root.currentTab = index
-                }
-
                 Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.panelBorder }
 
-                // ---- Split container (request / response) ----
                 Item {
                     Layout.fillWidth: true; Layout.fillHeight: true
 
-                    ColumnLayout {
+                    ApiRequestEditorPanel {
                         id: requestPanel
-                        anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
-                        height: root.requestPanelHeight > 0 ? root.requestPanelHeight : Math.round(parent.height * root.requestPanelRatio)
-                        spacing: 0
-
-                        StackLayout {
-                            Layout.fillWidth: true; Layout.fillHeight: true
-                            currentIndex: root.currentTab
-
-                            KvTableSection {
-                                rows: vm.queryParams; showTypeSelector: true; keyWidth: 220; descWidth: 180
-                                dark: root.dark; textMain: root.textMain; textMuted: root.textMuted
-                                panelBorder: root.panelBorder; tableHeaderBg: root.tableHeaderBg
-                                onRowEnabledToggled: function(index, checked) { apiTestVm.toggleSectionRowEnabled("query", index, checked) }
-                                onRowKeyCommitted: function(index, keyText) { apiTestVm.editSectionRowKey("query", index, keyText) }
-                                onRowTypeCommitted: function(index, typeText) { /* noop */ }
-                                onRowValueCommitted: function(index, valueText) { apiTestVm.editSectionRowValue("query", index, valueText) }
-                                onRowDescCommitted: function(index, descText) { /* noop */ }
-                                onRowDeleteRequested: function(index) { apiTestVm.deleteSectionRow("query", index) }
-                            }
-                            KvTableSection {
-                                rows: vm.pathParams; keyTitle: "路径参数"; keyWidth: 220; descWidth: 180
-                                dark: root.dark; textMain: root.textMain; textMuted: root.textMuted
-                                panelBorder: root.panelBorder; tableHeaderBg: root.tableHeaderBg
-                                onRowEnabledToggled: function(index, checked) { apiTestVm.toggleSectionRowEnabled("path", index, checked) }
-                                onRowKeyCommitted: function(index, keyText) { apiTestVm.editSectionRowKey("path", index, keyText) }
-                                onRowValueCommitted: function(index, valueText) { apiTestVm.editSectionRowValue("path", index, valueText) }
-                                onRowDeleteRequested: function(index) { apiTestVm.deleteSectionRow("path", index) }
-                            }
-                            ApiBodyTab {
-                                id: bodyTab
-                                dark: root.dark; panelBg: root.panelBg; panelBorder: root.panelBorder
-                                textMain: root.textMain; textMuted: root.textMuted; textSubtle: root.textSubtle
-                                tableHeaderBg: root.tableHeaderBg
-                                bodyModes: vm.bodyModes; currentBodyMode: vm.currentBodyMode
-                                bodyFormRows: vm.bodyFormRows; bodyText: vm.bodyText
-                                bodyFilePath: vm.bodyFilePath; bodyFileParamName: vm.bodyFileParamName
-                                activeBodyRow: root.activeBodyRow; showMagicPanel: root.showMagicPanel
-                                onBodyModeClicked: function(index) { if (apiTestVm) apiTestVm.setCurrentBodyMode(index) }
-                                onBodyTextEdited: function(text) { if (apiTestVm) apiTestVm.bodyText = text }
-                                onFormRowEnabledToggled: function(index, checked) { apiTestVm.toggleSectionRowEnabled("body", index, checked) }
-                                onFormRowKeyCommitted: function(index, keyText) { apiTestVm.editSectionRowKey("body", index, keyText) }
-                                onFormRowValueCommitted: function(index, valueText) { apiTestVm.editSectionRowValue("body", index, valueText) }
-                                onFormRowDeleteRequested: function(index) { apiTestVm.deleteSectionRow("body", index) }
-                                onFormRowValueFocused: function(index) { root.activeBodyRow = index }
-                                onFileBrowseClicked: fileDialog.open()
-                                onFileParamNameEdited: function(name) { if (apiTestVm) apiTestVm.bodyFileParamName = name }
-                                onMagicValueInsertRequested: function(value) { if (apiTestVm) apiTestVm.bodyText = vm.bodyText + value }
-                                onMagicPanelCloseRequested: root.showMagicPanel = false
-                            }
-                            KvTableSection {
-                                rows: vm.headersRows; keyTitle: "Header"; showTypeColumn: false; keyWidth: 240; descWidth: 200
-                                dark: root.dark; textMain: root.textMain; textMuted: root.textMuted
-                                panelBorder: root.panelBorder; tableHeaderBg: root.tableHeaderBg
-                                onRowEnabledToggled: function(index, checked) { apiTestVm.toggleSectionRowEnabled("headers", index, checked) }
-                                onRowKeyCommitted: function(index, keyText) { apiTestVm.editSectionRowKey("headers", index, keyText) }
-                                onRowValueCommitted: function(index, valueText) { apiTestVm.editSectionRowValue("headers", index, valueText) }
-                                onRowDescCommitted: function(index, descText) { /* noop */ }
-                                onRowDeleteRequested: function(index) { apiTestVm.deleteSectionRow("headers", index) }
-                            }
-                            KvTableSection {
-                                rows: vm.cookieRows; keyTitle: "Cookie"; showTypeColumn: false; keyWidth: 220; descWidth: 200
-                                dark: root.dark; textMain: root.textMain; textMuted: root.textMuted
-                                panelBorder: root.panelBorder; tableHeaderBg: root.tableHeaderBg
-                                onRowEnabledToggled: function(index, checked) { apiTestVm.toggleSectionRowEnabled("cookies", index, checked) }
-                                onRowKeyCommitted: function(index, keyText) { apiTestVm.editSectionRowKey("cookies", index, keyText) }
-                                onRowValueCommitted: function(index, valueText) { apiTestVm.editSectionRowValue("cookies", index, valueText) }
-                                onRowDescCommitted: function(index, descText) { /* noop */ }
-                                onRowDeleteRequested: function(index) { apiTestVm.deleteSectionRow("cookies", index) }
-                            }
-                            ApiAuthTab {
-                                id: authTab
-                                dark: root.dark; textMain: root.textMain; textMuted: root.textMuted
-                                authTypeValue: vm.authTypeValue; authValueText: vm.authValueText
-                                onAuthTypeChanged: function(value) { if (apiTestVm) apiTestVm.authTypeValue = value }
-                                onAuthValueChanged: function(text) { if (apiTestVm) apiTestVm.authValueText = text }
-                            }
-                            Item {
-                                Layout.fillWidth: true; Layout.fillHeight: true
-                                UiTextArea {
-                                    id: preOpsInput
-                                    anchors.fill: parent; anchors.margins: Theme.space["2.5"]
-                                    dark: root.dark
-                                    placeholderText: "前置操作：每行一条 KV，发送请求前会附加全局参数。"
-                                    wrapMode: TextEdit.NoWrap
-                                    text: vm.preOpsText
-                                    onTextChanged: if (apiTestVm) apiTestVm.preOpsText = text
-                                }
-                            }
-                            Item {
-                                Layout.fillWidth: true; Layout.fillHeight: true
-                                UiTextArea {
-                                    id: postOpsInput
-                                    anchors.fill: parent; anchors.margins: Theme.space["2.5"]
-                                    dark: root.dark
-                                    placeholderText: "后置操作：响应后执行的断言。\nstatus == 200\nbody contains \"ok\""
-                                    wrapMode: TextEdit.NoWrap
-                                    text: vm.postOpsText
-                                    onTextChanged: if (apiTestVm) apiTestVm.postOpsText = text
-                                }
-                            }
-                            ApiSettingsTab {
-                                id: settingsTab
-                                dark: root.dark; textMain: root.textMain; textSubtle: root.textSubtle
-                                debugCases: vm.debugCases
-                                selectedDebugCaseIds: vm.selectedDebugCaseIds
-                                apiHistory: vm.apiHistory
-                                wsTimeline: vm.wsTimeline
-                                wsStatusText: vm.wsStatusText
-                                currentMethod: requestActionBar.getMethodText()
-                                methodColorFn: root.methodColor
-                                onSaveAsCaseClicked: saveCurrentAsDebugCase()
-                                onBatchRunClicked: {
-                                    if (apiTestVm && vm.selectedDebugCaseIds.length > 0)
-                                        apiTestVm.runDebugCases(endpointKey(), apiTestVm.selectedDebugCaseIds)
-                                }
-                                onCaseSelectionToggled: function(caseId, checked) { apiTestVm.toggleCaseSelectionById(caseId || "") }
-                                onHistoryRestoreRequested: function(methodText, urlText) { restoreHistoryRequest(methodText, urlText) }
-                            }
+                        anchors.left: parent.left
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        width: Math.max(parent.width < 820 ? 320 : 420, parent.width - responsePanel.width - verticalSplitter.width)
+                        backend: apiTestVm
+                        vm: root.vm
+                        dark: root.dark
+                        panelBg: root.panelBg
+                        panelBorder: root.panelBorder
+                        textMain: root.textMain
+                        textMuted: root.textMuted
+                        textSubtle: root.textSubtle
+                        tableHeaderBg: root.tableHeaderBg
+                        currentTab: root.currentTab
+                        activeBodyRow: root.activeBodyRow
+                        showMagicPanel: root.showMagicPanel
+                        currentMethod: requestActionBar.getMethodText()
+                        methodColorFn: root.methodColor
+                        onTabSelected: function(index) { root.currentTab = index }
+                        onFileBrowseClicked: fileDialog.open()
+                        onSaveAsCaseClicked: saveCurrentAsDebugCase()
+                        onBatchRunClicked: {
+                            if (apiTestVm && vm.selectedDebugCaseIds.length > 0)
+                                apiTestVm.runDebugCases(endpointKey(), apiTestVm.selectedDebugCaseIds)
                         }
+                        onCaseSelectionToggled: function(caseId, checked) { apiTestVm.toggleCaseSelectionById(caseId || "") }
+                        onHistoryRestoreRequested: function(methodText, urlText) { restoreHistoryRequest(methodText, urlText) }
+                        onBodyRowFocused: function(index) { root.activeBodyRow = index }
+                        onMagicPanelToggleRequested: root.showMagicPanel = !root.showMagicPanel
+                        onMagicValueInsertRequested: function(value) { if (apiTestVm) apiTestVm.bodyText = vm.bodyText + value }
+                        onMagicPanelCloseRequested: root.showMagicPanel = false
                     }
 
                     Rectangle {
                         id: verticalSplitter
-                        anchors.left: parent.left; anchors.right: parent.right
-                        anchors.top: requestPanel.bottom; height: 4; color: root.panelBorder
+                        width: 4
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        anchors.right: responsePanel.left
+                        color: root.panelBorder
                         MouseArea {
-                            anchors.fill: parent; anchors.topMargin: -4; anchors.bottomMargin: -4
-                            cursorShape: Qt.SplitVCursor
-                            property real _startY: 0; property real _startHeight: 0
-                            onPressed: { var p = mapToItem(parent.parent, mouseX, mouseY); _startY = p.y; _startHeight = requestPanel.height }
+                            anchors.fill: parent
+                            anchors.leftMargin: -4
+                            anchors.rightMargin: -4
+                            cursorShape: Qt.SplitHCursor
+                            property real _startX: 0
+                            property real _startWidth: 0
+                            onPressed: {
+                                var p = mapToItem(parent.parent, mouseX, mouseY)
+                                _startX = p.x
+                                _startWidth = responsePanel.width
+                            }
                             onPositionChanged: {
-                                var p = mapToItem(parent.parent, mouseX, mouseY); var total = parent.parent.height
-                                if (total > 0) { root.requestPanelHeight = Math.round(Math.max(120, Math.min(total * 0.75, _startHeight + (p.y - _startY)))); root.requestPanelRatio = root.requestPanelHeight / total }
+                                var p = mapToItem(parent.parent, mouseX, mouseY)
+                                var total = parent.parent.width
+                                if (total > 0) {
+                                    root.responsePanelWidth = Math.round(Math.max(360, Math.min(total * 0.62, _startWidth - (p.x - _startX))))
+                                    root.responsePanelRatio = root.responsePanelWidth / total
+                                }
                             }
                         }
                     }
 
                     ApiResponsePanel {
                         id: responsePanel
-                        anchors.left: parent.left; anchors.right: parent.right
-                        anchors.top: verticalSplitter.bottom; anchors.bottom: parent.bottom
+                        width: {
+                            var total = parent ? parent.width : 0
+                            var minRequest = total < 820 ? 320 : 420
+                            var minResponse = total < 820 ? 300 : 360
+                            var desired = root.responsePanelWidth > 0 ? root.responsePanelWidth : Math.round(total * root.responsePanelRatio)
+                            var maxResponse = Math.max(minResponse, total - minRequest - verticalSplitter.width)
+                            return Math.max(minResponse, Math.min(desired, maxResponse))
+                        }
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
                         dark: root.dark; panelBg: root.panelBg; panelBorder: root.panelBorder
                         textMain: root.textMain; textMuted: root.textMuted; textSubtle: root.textSubtle
                         softBorder: root.softBorder
-                        mockMode: vm.mockMode; assertionsEnabled: vm.assertionsEnabled
-                        titleText: vm.responseTitle
-                        bodyText: vm.responseBody
-                        headersText: vm.responseHeaders
-                        requestText: vm.responseRequest
-                        curlText: vm.responseCurl
-                        requestLogText: vm.responseLog
-                        logEntries: vm.responseLogs
+                        mockMode: root.mockModeValue; assertionsEnabled: root.assertionsEnabledValue
+                        titleText: root.responseTitleValue
+                        statusCode: root.responseStatusCodeValue
+                        elapsedMs: root.responseElapsedMsValue
+                        finalUrl: root.responseFinalUrlValue
+                        outcome: root.responseOutcomeValue
+                        bodyText: root.responseBodyValue
+                        bodyHtml: root.responseBodyHtmlValue
+                        headersText: root.responseHeadersValue
+                        requestText: root.responseRequestValue
+                        curlText: root.responseCurlValue
+                        requestLogText: root.responseLogValue
+                        logEntries: root.responseLogsModel
                         onMockModeToggled: function(checked) { if (apiTestVm) apiTestVm.mockMode = checked }
                         onAssertionsToggled: function(checked) { if (apiTestVm) apiTestVm.assertionsEnabled = checked }
                     }
@@ -483,7 +468,7 @@ Item {
     // ---- Overlays ----
     ApiEnvPopup {
         id: envPopup; dark: root.dark; panelBg: root.panelBg; panelBorder: root.panelBorder
-        environments: vm.environments; currentEnvIndex: vm.currentEnvIndex
+        environments: root.environmentsModel; currentEnvIndex: root.currentEnvironmentIndex
         envTagFn: ApiUtils.envTag; envTagColorFn: root.envTagColor
         onEnvironmentSelected: function(index) { if (apiTestVm) apiTestVm.currentEnvIndex = index }
         onManageRequested: envDialog.open()
@@ -493,8 +478,8 @@ Item {
         onCloseAllRequested: if (apiTestVm) { apiTestVm.endpointTabs = []; apiTestVm.currentEndpointTab = -1 }
         onCloseCurrentRequested: if (apiTestVm) { apiTestVm.closeCurrentTab(); root.syncRequestActionBarFromCurrentTab() }
         onCloseOthersRequested: {
-            if (!apiTestVm || vm.currentEndpointTab < 0 || vm.currentEndpointTab >= vm.endpointTabs.length) return
-            var keep = vm.endpointTabs[vm.currentEndpointTab]
+            if (!apiTestVm || root.currentEndpointTabIndex < 0 || root.currentEndpointTabIndex >= root.endpointTabsModel.length) return
+            var keep = root.endpointTabsModel[root.currentEndpointTabIndex]
             apiTestVm.endpointTabs = [keep]
             apiTestVm.currentEndpointTab = 0
             root.syncRequestActionBarFromCurrentTab()
@@ -502,10 +487,11 @@ Item {
     }
     EnvManagerDialog {
         id: envDialog; anchors.centerIn: Overlay.overlay
-        dark: root.dark; environments: vm.environments; currentEnvIndex: vm.currentEnvIndex
+        dark: root.dark; environments: root.environmentsModel; currentEnvIndex: root.currentEnvironmentIndex
+        autoSaveEnabled: true
         onEnvironmentsSaved: function(envs, selectedIndex) {
             if (!apiTestVm) return
-            apiTestVm.environments = envs; apiTestVm.currentEnvIndex = selectedIndex
+            apiTestVm.currentEnvIndex = selectedIndex
             apiTestVm.saveEnvironments(envs)
         }
     }
@@ -534,7 +520,10 @@ Item {
             apiTestVm.loadCollectionTree()
         }
         function onApiEnvironmentsImported(items) {
-            if (items.length > 0) { apiTestVm.environments = items; apiTestVm.currentEnvIndex = 0 }
+            if (items.length > 0) {
+                apiTestVm.currentEnvIndex = 0
+                apiTestVm.saveEnvironments(items)
+            }
         }
         function onEnvironmentsLoaded(items) { apiTestVm.environments = items }
         function onCollectionTreeLoaded(items) { apiTestVm.collectionTree = items }

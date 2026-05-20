@@ -31,6 +31,7 @@ class LauncherBridge(QObject):
     restartRequested = Signal()
     systemCommandRun = Signal(str, str)
     hideLauncherRequested = Signal()
+    appIndexChanged = Signal()
     _appIndexScanCompleted = Signal()
 
     def __init__(
@@ -93,11 +94,12 @@ class LauncherBridge(QObject):
     @Slot()
     def _refresh_after_app_scan(self) -> None:
         self.performSearch(self._last_query)
+        self.appIndexChanged.emit()
 
     @Slot(str)
     def launchPlugin(self, plugin_id: str) -> None:
         self._record_plugin_launch(plugin_id)
-        self._log.info("launcher.plugin_launch", "启动插件", pluginId=plugin_id, traceId=self._trace_id)
+        self._log.debug("launcher.plugin_launch", "启动插件", pluginId=plugin_id, traceId=self._trace_id)
         self.pluginLaunched.emit(plugin_id)
         self.pluginCommandLaunched.emit(plugin_id, "", "", {"_traceId": self._trace_id})
 
@@ -114,7 +116,7 @@ class LauncherBridge(QObject):
             launch_payload["clearLauncherInputOnEnter"] = bool(
                 item.get("clearInputOnEnter")
             )
-            self._log.info(
+            self._log.debug(
                 "launcher.plugin_item_launch",
                 "启动插件命令",
                 pluginId=plugin_id,
@@ -136,7 +138,7 @@ class LauncherBridge(QObject):
             payload = item.get("payload", {}) if item else {}
             if source == "system" and payload.get("action") == "__restart_app__":
                 self._record_item_launch(item or {})
-                self._log.info("launcher.restart", "请求重启应用", traceId=self._trace_id)
+                self._log.debug("launcher.restart", "请求重启应用", traceId=self._trace_id)
                 self.restartRequested.emit()
                 return
             launched_name = self._command_service.launch_external_item(
@@ -207,6 +209,10 @@ class LauncherBridge(QObject):
     @Slot()
     def hideLauncher(self) -> None:
         self.hideLauncherRequested.emit()
+
+    @Slot()
+    def checkAppIndex(self) -> None:
+        self._command_service.check_app_index_changes()
 
     @Slot(str, str, str)
     def activatePluginListItemAction(

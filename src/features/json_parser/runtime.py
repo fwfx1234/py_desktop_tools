@@ -7,8 +7,7 @@ from .view_model import JsonParserViewModel
 
 class JsonParserRuntime:
     def on_enter(self, ctx: PluginContext, action: PluginAction) -> QmlPluginSession:
-        del ctx
-        view_model = JsonParserViewModel(action.input_text)
+        view_model = JsonParserViewModel(action.input_text, platform_api=ctx.platform)
         return JsonParserSession(action.manifest, view_model)
 
     def on_exit(self) -> None:

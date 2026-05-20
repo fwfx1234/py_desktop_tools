@@ -15,6 +15,9 @@ class AppIndexerProtocol(Protocol):
     ) -> list[AppEntry]:
         ...
 
+    def quick_signature(self) -> str:
+        ...
+
 
 class ClipboardApiProtocol(Protocol):
     def read_text(self) -> str:
@@ -113,6 +116,9 @@ class DynamicCommandApiFactoryProtocol(Protocol):
 
 class PermissionApiProtocol(Protocol):
     def accessibility_status(self) -> PlatformResult:
+        ...
+
+    def open_accessibility_settings(self) -> PlatformResult:
         ...
 
     def screen_recording_status(self) -> PlatformResult:

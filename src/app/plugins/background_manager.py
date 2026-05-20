@@ -52,7 +52,7 @@ class BackgroundManager:
                     context.services.platform = old_service_platform
             with self._lock:
                 self._running_plugin_ids.add(manifest.id)
-            self._log.info("plugin.background.start", "后台插件启动", pluginId=manifest.id)
+            self._log.debug("plugin.background.start", "后台插件启动", pluginId=manifest.id)
         except Exception as exc:
             self._log.warning("plugin.background.start_failed", "后台插件启动失败", pluginId=manifest.id, error=str(exc))
 
@@ -73,4 +73,4 @@ class BackgroundManager:
                 with self._lock:
                     self._running_plugin_ids.discard(plugin_id)
         if plugin_ids:
-            self._log.info("plugin.background.stop_all", "停止后台插件", count=len(plugin_ids))
+            self._log.debug("plugin.background.stop_all", "停止后台插件", count=len(plugin_ids))

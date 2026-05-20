@@ -24,6 +24,7 @@ class WebSocketSessionService:
         self._db_path = self._database.path
         self._variable_service = variable_service
         self._connections: dict[str, "WebSocket"] = {}
+        self._session_contexts: dict[str, tuple[str, dict[str, str]]] = {}
         self._lock = RLock()
         self._ensure_tables()
 
@@ -63,18 +64,25 @@ class WebSocketSessionService:
         cookies: str,
         env_name: str,
         env_base_url: str = "",
+        env_vars: dict[str, str] | None = None,
     ) -> str:
         from websocket import create_connection
 
-        resolved_url = self._resolve_url(url, env_base_url, env_name=env_name)
-        final_url = self._build_url(resolved_url, params, env_name=env_name)
-        header_lines = [f"{k}: {self._variable_service.resolve_text(v, env_name=env_name)}" for k, v in headers.items()]
+        env_vars = env_vars or {}
+        resolved_url = self._resolve_url(url, env_base_url)
+        final_url = self._build_url(resolved_url, params, env_name=env_name, env_vars=env_vars)
+        headers = self._variable_service.resolve_mapping(headers, env_name=env_name, env_vars=env_vars)
+        header_lines = [
+            f"{k}: {v}"
+            for k, v in headers.items()
+        ]
         if cookies.strip():
-            header_lines.append(f"Cookie: {self._variable_service.resolve_text(cookies, env_name=env_name)}")
+            header_lines.append(f"Cookie: {self._variable_service.resolve_text(cookies, env_name=env_name, env_vars=env_vars)}")
         ws = create_connection(final_url, header=header_lines or None, timeout=10)
         with self._lock:
             previous = self._connections.get(tab_id)
             self._connections[tab_id] = ws
+            self._session_contexts[tab_id] = (env_name, dict(env_vars))
         if previous is not None:
             try:
                 previous.close()
@@ -87,6 +95,7 @@ class WebSocketSessionService:
     def disconnect(self, tab_id: str) -> None:
         with self._lock:
             ws = self._connections.pop(tab_id, None)
+            self._session_contexts.pop(tab_id, None)
         if ws is not None:
             try:
                 ws.close()
@@ -105,12 +114,24 @@ class WebSocketSessionService:
         with self._lock:
             return tab_id in self._connections
 
-    def send_message(self, *, tab_id: str, content: str, encoding: str) -> str:
+    def send_message(
+        self,
+        *,
+        tab_id: str,
+        content: str,
+        encoding: str,
+        env_name: str = "",
+        env_vars: dict[str, str] | None = None,
+    ) -> str:
         with self._lock:
             ws = self._connections.get(tab_id)
+            stored_context = self._session_contexts.get(tab_id)
         if ws is None:
             raise RuntimeError("WebSocket 未连接，请先连接。")
-        payload = content or ""
+        if stored_context and not env_name and env_vars is None:
+            env_name, env_vars = stored_context
+        env_vars = env_vars or {}
+        payload = self._variable_service.resolve_text(content or "", env_name=env_name, env_vars=env_vars)
         if encoding == "base64":
             ws.send(base64.b64decode(payload), opcode=0x2)
         elif encoding == "hex":
@@ -186,7 +207,7 @@ class WebSocketSessionService:
         return row[0] if row else ""
 
     @staticmethod
-    def _resolve_url(url: str, base_url: str, *, env_name: str = "") -> str:
+    def _resolve_url(url: str, base_url: str) -> str:
         u = (url or "").strip()
         base = (base_url or "").strip().rstrip("/")
         if not u:
@@ -197,10 +218,9 @@ class WebSocketSessionService:
             return f"{base}{u}"
         return f"{base}/{u}"
 
-    def _build_url(self, url: str, params: dict[str, str], *, env_name: str) -> str:
-        resolved = self._variable_service.resolve_text(url, env_name=env_name)
+    def _build_url(self, url: str, params: dict[str, str], *, env_name: str, env_vars: dict[str, str]) -> str:
+        resolved = self._variable_service.resolve_text(url, env_name=env_name, env_vars=env_vars)
         parsed = urlparse(resolved)
         query = dict(parse_qsl(parsed.query))
-        for k, v in params.items():
-            query[k] = self._variable_service.resolve_text(v, env_name=env_name)
+        query.update(self._variable_service.resolve_mapping(params, env_name=env_name, env_vars=env_vars))
         return urlunparse(parsed._replace(query=urlencode(query)))

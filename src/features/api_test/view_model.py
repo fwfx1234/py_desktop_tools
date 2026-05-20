@@ -110,13 +110,17 @@ class ApiTestViewModel(QObject):
     # queryParams
     def _get_query_params(self): return self._editor.query_params
     def _set_query_params(self, v):
-        if self._editor.query_params != v: self._editor.query_params = list(v); self.editorChanged.emit()
+        if self._editor.query_params != v:
+            self._editor.query_params = list(v)
+            self._persist_editor_change()
     queryParams = Property("QVariantList", _get_query_params, _set_query_params, notify=editorChanged)
 
     # pathParams
     def _get_path_params(self): return self._editor.path_params
     def _set_path_params(self, v):
-        if self._editor.path_params != v: self._editor.path_params = list(v); self.editorChanged.emit()
+        if self._editor.path_params != v:
+            self._editor.path_params = list(v)
+            self._persist_editor_change()
     pathParams = Property("QVariantList", _get_path_params, _set_path_params, notify=editorChanged)
 
     # bodyModes
@@ -125,98 +129,138 @@ class ApiTestViewModel(QObject):
     # currentBodyMode
     def _get_current_body_mode(self): return self._editor.current_body_mode
     def _set_current_body_mode(self, v):
-        if self._editor.current_body_mode != v: self._editor.current_body_mode = int(v); self.editorChanged.emit()
+        if self._editor.current_body_mode != v:
+            self._editor.current_body_mode = int(v)
+            self._persist_editor_change()
     currentBodyMode = Property(int, _get_current_body_mode, _set_current_body_mode, notify=editorChanged)
 
     # bodyFormRows
     def _get_body_form_rows(self): return self._editor.body_form_rows
     def _set_body_form_rows(self, v):
-        if self._editor.body_form_rows != v: self._editor.body_form_rows = list(v); self.editorChanged.emit()
+        if self._editor.body_form_rows != v:
+            self._editor.body_form_rows = list(v)
+            if self._editor.current_body_mode == 1:
+                self._editor.save_body_to_mode()
+            self._persist_editor_change()
     bodyFormRows = Property("QVariantList", _get_body_form_rows, _set_body_form_rows, notify=editorChanged)
 
     # bodyFilePath
     def _get_body_file_path(self): return self._editor.body_file_path
     def _set_body_file_path(self, v):
-        if self._editor.body_file_path != v: self._editor.body_file_path = str(v); self.editorChanged.emit()
+        if self._editor.body_file_path != v:
+            self._editor.body_file_path = str(v)
+            if self._editor.current_body_mode == 5:
+                self._editor.save_body_to_mode()
+            self._persist_editor_change()
     bodyFilePath = Property(str, _get_body_file_path, _set_body_file_path, notify=editorChanged)
 
     # bodyFileParamName
     def _get_body_file_param_name(self): return self._editor.body_file_param_name
     def _set_body_file_param_name(self, v):
-        if self._editor.body_file_param_name != v: self._editor.body_file_param_name = str(v); self.editorChanged.emit()
+        if self._editor.body_file_param_name != v:
+            self._editor.body_file_param_name = str(v)
+            if self._editor.current_body_mode == 5:
+                self._editor.save_body_to_mode()
+            self._persist_editor_change()
     bodyFileParamName = Property(str, _get_body_file_param_name, _set_body_file_param_name, notify=editorChanged)
 
     # bodyText
     def _get_body_text(self): return self._editor.body_text
     def _set_body_text(self, v):
-        if self._editor.body_text != v: self._editor.body_text = str(v); self.editorChanged.emit()
+        if self._editor.body_text != v:
+            self._editor.body_text = str(v)
+            if self._editor.current_body_mode not in {1, 5}:
+                self._editor.save_body_to_mode()
+            self._persist_editor_change()
     bodyText = Property(str, _get_body_text, _set_body_text, notify=editorChanged)
 
     # bodyPerMode
     def _get_body_per_mode(self): return self._editor.body_per_mode
     def _set_body_per_mode(self, v):
         next_value = dict(v) if isinstance(v, dict) else {}
-        if self._editor.body_per_mode != next_value: self._editor.body_per_mode = next_value; self.editorChanged.emit()
+        if self._editor.body_per_mode != next_value:
+            self._editor.body_per_mode = next_value
+            self._persist_editor_change()
     bodyPerMode = Property("QVariantMap", _get_body_per_mode, _set_body_per_mode, notify=editorChanged)
 
     # headersRows
     def _get_headers_rows(self): return self._editor.headers_rows
     def _set_headers_rows(self, v):
-        if self._editor.headers_rows != v: self._editor.headers_rows = list(v); self.editorChanged.emit()
+        if self._editor.headers_rows != v:
+            self._editor.headers_rows = list(v)
+            self._persist_editor_change()
     headersRows = Property("QVariantList", _get_headers_rows, _set_headers_rows, notify=editorChanged)
 
     # cookieRows
     def _get_cookie_rows(self): return self._editor.cookie_rows
     def _set_cookie_rows(self, v):
-        if self._editor.cookie_rows != v: self._editor.cookie_rows = list(v); self.editorChanged.emit()
+        if self._editor.cookie_rows != v:
+            self._editor.cookie_rows = list(v)
+            self._persist_editor_change()
     cookieRows = Property("QVariantList", _get_cookie_rows, _set_cookie_rows, notify=editorChanged)
 
     # authTypeValue
     def _get_auth_type_value(self): return self._editor.auth_type_value
     def _set_auth_type_value(self, v):
-        if self._editor.auth_type_value != v: self._editor.auth_type_value = str(v); self.editorChanged.emit()
+        if self._editor.auth_type_value != v:
+            self._editor.auth_type_value = str(v)
+            self._persist_editor_change()
     authTypeValue = Property(str, _get_auth_type_value, _set_auth_type_value, notify=editorChanged)
 
     # authValueText
     def _get_auth_value_text(self): return self._editor.auth_value_text
     def _set_auth_value_text(self, v):
-        if self._editor.auth_value_text != v: self._editor.auth_value_text = str(v); self.editorChanged.emit()
+        if self._editor.auth_value_text != v:
+            self._editor.auth_value_text = str(v)
+            self._persist_editor_change()
     authValueText = Property(str, _get_auth_value_text, _set_auth_value_text, notify=editorChanged)
 
     # preOpsText
     def _get_pre_ops_text(self): return self._editor.pre_ops_text
     def _set_pre_ops_text(self, v):
-        if self._editor.pre_ops_text != v: self._editor.pre_ops_text = str(v); self.editorChanged.emit()
+        if self._editor.pre_ops_text != v:
+            self._editor.pre_ops_text = str(v)
+            self._persist_editor_change()
     preOpsText = Property(str, _get_pre_ops_text, _set_pre_ops_text, notify=editorChanged)
 
     # postOpsText
     def _get_post_ops_text(self): return self._editor.post_ops_text
     def _set_post_ops_text(self, v):
-        if self._editor.post_ops_text != v: self._editor.post_ops_text = str(v); self.editorChanged.emit()
+        if self._editor.post_ops_text != v:
+            self._editor.post_ops_text = str(v)
+            self._persist_editor_change()
     postOpsText = Property(str, _get_post_ops_text, _set_post_ops_text, notify=editorChanged)
 
     # cookiesText
     def _get_cookies_text(self): return self._editor.cookies_text
     def _set_cookies_text(self, v):
-        if self._editor.cookies_text != v: self._editor.cookies_text = str(v); self.editorChanged.emit()
+        if self._editor.cookies_text != v:
+            self._editor.cookies_text = str(v)
+            self._persist_editor_change()
     cookiesText = Property(str, _get_cookies_text, _set_cookies_text, notify=editorChanged)
 
     # wsEncoding
     def _get_ws_encoding(self): return self._editor.ws_encoding
     def _set_ws_encoding(self, v):
-        if self._editor.ws_encoding != v: self._editor.ws_encoding = str(v); self.editorChanged.emit()
+        if self._editor.ws_encoding != v:
+            self._editor.ws_encoding = str(v)
+            self._persist_editor_change()
     wsEncoding = Property(str, _get_ws_encoding, _set_ws_encoding, notify=editorChanged)
 
     # mockMode
     def _get_mock_mode(self): return self._editor.mock_mode
     def _set_mock_mode(self, v):
-        if self._editor.mock_mode != v: self._editor.mock_mode = bool(v); self.editorChanged.emit()
+        if self._editor.mock_mode != v:
+            self._editor.mock_mode = bool(v)
+            self._persist_editor_change()
     mockMode = Property(bool, _get_mock_mode, _set_mock_mode, notify=editorChanged)
 
     # assertionsEnabled
     def _get_assertions_enabled(self): return self._editor.assertions_enabled
     def _set_assertions_enabled(self, v):
-        if self._editor.assertions_enabled != v: self._editor.assertions_enabled = bool(v); self.editorChanged.emit()
+        if self._editor.assertions_enabled != v:
+            self._editor.assertions_enabled = bool(v)
+            self._persist_editor_change()
     assertionsEnabled = Property(bool, _get_assertions_enabled, _set_assertions_enabled, notify=editorChanged)
 
     # requestSending
@@ -264,7 +308,11 @@ class ApiTestViewModel(QObject):
     # currentEnvIndex
     def _get_current_env_index(self): return self._environments.current_index
     def _set_current_env_index(self, v):
-        if self._environments.current_index != v: self._environments.set_current_index(int(v)); self.environmentsChanged.emit()
+        if self._environments.current_index != v:
+            self._environments.set_current_index(int(v))
+            if self._tabs.persist_current():
+                self.tabsChanged.emit()
+            self.environmentsChanged.emit()
     currentEnvIndex = Property(int, _get_current_env_index, _set_current_env_index, notify=environmentsChanged)
 
     # apiHistory
@@ -278,6 +326,9 @@ class ApiTestViewModel(QObject):
 
     def _get_response_body(self): return self._response.body_text
     responseBody = Property(str, _get_response_body, notify=responseChanged)
+
+    def _get_response_body_html(self): return self._response.body_html
+    responseBodyHtml = Property(str, _get_response_body_html, notify=responseChanged)
 
     def _get_response_headers(self): return self._response.headers_text
     responseHeaders = Property(str, _get_response_headers, notify=responseChanged)
@@ -293,6 +344,18 @@ class ApiTestViewModel(QObject):
 
     def _get_response_logs(self): return self._response.log_entries
     responseLogs = Property("QVariantList", _get_response_logs, notify=responseChanged)
+
+    def _get_response_status_code(self): return self._response.status_code
+    responseStatusCode = Property(str, _get_response_status_code, notify=responseChanged)
+
+    def _get_response_elapsed_ms(self): return self._response.elapsed_ms
+    responseElapsedMs = Property(str, _get_response_elapsed_ms, notify=responseChanged)
+
+    def _get_response_final_url(self): return self._response.final_url
+    responseFinalUrl = Property(str, _get_response_final_url, notify=responseChanged)
+
+    def _get_response_outcome(self): return self._response.outcome
+    responseOutcome = Property(str, _get_response_outcome, notify=responseChanged)
 
     # ---- helpers ----
     def _current_tab_id(self) -> str:
@@ -328,6 +391,13 @@ class ApiTestViewModel(QObject):
             self._request_sending = sending
         self.apiSendingChanged.emit(sending)
 
+    def _persist_editor_change(self, *, emit_editor: bool = True, emit_tabs: bool = True) -> None:
+        persisted = self._tabs.persist_current()
+        if persisted and emit_tabs:
+            self.tabsChanged.emit()
+        if emit_editor:
+            self.editorChanged.emit()
+
     def _emit_ws_timeline(self, tab_id: str) -> None:
         self.wsTimelineLoaded.emit(self._service.ws_timeline(tab_id))
 
@@ -336,7 +406,7 @@ class ApiTestViewModel(QObject):
         self.wsStatusChanged.emit()
 
     def _emit_editor_changed(self) -> None:
-        self.editorChanged.emit()
+        self._persist_editor_change(emit_tabs=False)
 
     def _emit_tabs_and_editor_changed(self) -> None:
         self.tabsChanged.emit()
@@ -430,7 +500,12 @@ class ApiTestViewModel(QObject):
     @Slot("QVariantList")
     def saveEnvironments(self, environments: list[dict]) -> None:
         self._service.save_environments(list(environments))
-        self.environmentsLoaded.emit(self._service.list_environments())
+        saved = self._service.list_environments()
+        self._environments.set_items(saved)
+        self._tabs.persist_current()
+        self.environmentsChanged.emit()
+        self.tabsChanged.emit()
+        self.environmentsLoaded.emit(saved)
 
     @Slot()
     def loadCollectionTree(self) -> None:
@@ -451,6 +526,8 @@ class ApiTestViewModel(QObject):
     @Slot(str, str)
     def renameCollectionNode(self, nodeId, name) -> None:
         self._service.rename_collection_node(nodeId, name)
+        if self._tabs.rename_node_tabs(nodeId, name):
+            self.tabsChanged.emit()
 
     @Slot(str)
     def deleteCollectionNode(self, nodeId) -> None:
@@ -525,6 +602,7 @@ class ApiTestViewModel(QObject):
             str(tab.get("postOpsText") or ""),
             str(tab.get("nodeId") or ""),
             bool(tab.get("mockMode")),
+            int(tab.get("activeRequestTab") or 0),
         )
 
     def _save_case_snapshot_from_dict(self, node_id: str, snapshot: dict) -> None:
@@ -638,9 +716,19 @@ class ApiTestViewModel(QObject):
             self._emit_editor_changed()
 
     @Slot(str, int, str)
+    def editSectionRowKeyLive(self, section: str, row_index: int, key_text: str) -> None:
+        if self._editor.edit_row_key_live(section, row_index, key_text):
+            self._persist_editor_change(emit_editor=False)
+
+    @Slot(str, int, str)
     def editSectionRowKey(self, section: str, row_index: int, key_text: str) -> None:
         if self._editor.edit_row_key(section, row_index, key_text):
             self._emit_editor_changed()
+
+    @Slot(str, int, str)
+    def editSectionRowValueLive(self, section: str, row_index: int, value_text: str) -> None:
+        if self._editor.edit_row_value_live(section, row_index, value_text):
+            self._persist_editor_change(emit_editor=False)
 
     @Slot(str, int, str)
     def editSectionRowValue(self, section: str, row_index: int, value_text: str) -> None:
@@ -667,6 +755,11 @@ class ApiTestViewModel(QObject):
     @Slot(str, str)
     def updateCurrentTabRequest(self, method: str, url: str) -> None:
         if self._tabs.update_current_request(method, url):
+            self.tabsChanged.emit()
+
+    @Slot(int)
+    def updateCurrentTabActiveRequestTab(self, index: int) -> None:
+        if self._tabs.update_current_active_request_tab(int(index)):
             self.tabsChanged.emit()
 
     @Slot(str, str, str, str)

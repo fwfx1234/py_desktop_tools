@@ -29,17 +29,28 @@ class HttpRequestService:
         params: dict[str, str],
         headers: dict[str, str],
         body_text: str,
+        env_name: str = "",
+        env_vars: dict[str, str] | None = None,
+        env_base_url: str = "",
+        pre_ops_text: str = "",
         log_note: str = "未发起网络请求，仅生成请求详情。",
     ) -> dict[str, str]:
         import requests
 
+        env_vars = env_vars or {}
+        final_url = self._resolve_url(url, env_base_url)
         draft = RequestDraft(
             method=method,
-            url=url,
-            params=params,
-            headers=headers,
-            body=body_text or "",
+            url=self._variable_service.resolve_text(final_url, env_name=env_name, env_vars=env_vars),
+            params=self._variable_service.resolve_mapping(params, env_name=env_name, env_vars=env_vars),
+            headers=self._variable_service.resolve_mapping(headers, env_name=env_name, env_vars=env_vars),
+            body=self._variable_service.resolve_text(body_text or "", env_name=env_name, env_vars=env_vars),
         )
+        draft, temporary_vars = self._script_service.apply_pre_ops(draft, pre_ops_text)
+        draft.url = self._variable_service.resolve_text(draft.url, env_name=env_name, temporary=temporary_vars, env_vars=env_vars)
+        draft.body = self._variable_service.resolve_text(draft.body, env_name=env_name, temporary=temporary_vars, env_vars=env_vars)
+        draft.params = self._variable_service.resolve_mapping(draft.params, env_name=env_name, temporary=temporary_vars, env_vars=env_vars)
+        draft.headers = self._variable_service.resolve_mapping(draft.headers, env_name=env_name, temporary=temporary_vars, env_vars=env_vars)
         prepared = None
         error = None
         try:
@@ -50,14 +61,14 @@ class HttpRequestService:
             details = self._request_details_from_draft(draft)
         details["requestLogText"] = self._build_request_log(
             raw_url=url,
-            env_base_url="",
-            resolved_url=url,
+            env_base_url=env_base_url,
+            resolved_url=final_url,
             draft=draft,
             prepared=prepared,
             response=None,
             error=error,
             elapsed_ms=None,
-            temporary_vars={},
+            temporary_vars=temporary_vars,
             note=log_note,
         )
         return details
@@ -83,21 +94,15 @@ class HttpRequestService:
         draft = RequestDraft(
             method=method,
             url=self._variable_service.resolve_text(final_url, env_name=env_name, env_vars=env_vars),
-            params={k: self._variable_service.resolve_text(v, env_name=env_name, env_vars=env_vars) for k, v in params.items()},
-            headers={k: self._variable_service.resolve_text(v, env_name=env_name, env_vars=env_vars) for k, v in headers.items()},
+            params=self._variable_service.resolve_mapping(params, env_name=env_name, env_vars=env_vars),
+            headers=self._variable_service.resolve_mapping(headers, env_name=env_name, env_vars=env_vars),
             body=self._variable_service.resolve_text(body_text or "", env_name=env_name, env_vars=env_vars),
         )
         draft, temporary_vars = self._script_service.apply_pre_ops(draft, pre_ops_text)
         draft.url = self._variable_service.resolve_text(draft.url, env_name=env_name, temporary=temporary_vars, env_vars=env_vars)
         draft.body = self._variable_service.resolve_text(draft.body, env_name=env_name, temporary=temporary_vars, env_vars=env_vars)
-        draft.params = {
-            k: self._variable_service.resolve_text(v, env_name=env_name, temporary=temporary_vars, env_vars=env_vars)
-            for k, v in draft.params.items()
-        }
-        draft.headers = {
-            k: self._variable_service.resolve_text(v, env_name=env_name, temporary=temporary_vars, env_vars=env_vars)
-            for k, v in draft.headers.items()
-        }
+        draft.params = self._variable_service.resolve_mapping(draft.params, env_name=env_name, temporary=temporary_vars, env_vars=env_vars)
+        draft.headers = self._variable_service.resolve_mapping(draft.headers, env_name=env_name, temporary=temporary_vars, env_vars=env_vars)
         prepared = None
         request_details = self._request_details_from_draft(draft)
         started_at = time.perf_counter()
@@ -212,11 +217,14 @@ class HttpRequestService:
         draft = RequestDraft(
             method=method,
             url=self._variable_service.resolve_text(final_url, env_name=env_name, env_vars=env_vars),
-            params={k: self._variable_service.resolve_text(v, env_name=env_name, env_vars=env_vars) for k, v in params.items()},
-            headers={k: self._variable_service.resolve_text(v, env_name=env_name, env_vars=env_vars) for k, v in headers.items()},
+            params=self._variable_service.resolve_mapping(params, env_name=env_name, env_vars=env_vars),
+            headers=self._variable_service.resolve_mapping(headers, env_name=env_name, env_vars=env_vars),
             body="",
         )
         draft, temporary_vars = self._script_service.apply_pre_ops(draft, pre_ops_text)
+        draft.url = self._variable_service.resolve_text(draft.url, env_name=env_name, temporary=temporary_vars, env_vars=env_vars)
+        draft.params = self._variable_service.resolve_mapping(draft.params, env_name=env_name, temporary=temporary_vars, env_vars=env_vars)
+        draft.headers = self._variable_service.resolve_mapping(draft.headers, env_name=env_name, temporary=temporary_vars, env_vars=env_vars)
         request_details = self._request_details_from_draft(draft)
         started_at = time.perf_counter()
         try:

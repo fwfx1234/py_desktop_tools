@@ -97,7 +97,7 @@ Rectangle {
                         required property int index
                         required property var modelData
                         property bool active: index === root.currentEndpointTab
-                        width: Math.max(118, Math.min(220, tabMethod.implicitWidth + tabName.implicitWidth + 62))
+                        width: Math.max(116, Math.min(220, tabMethod.implicitWidth + tabName.implicitWidth + 54))
                         height: endpointTabsFlick.height
                         color: endpointTabMouse.containsMouse
                             ? Theme.token("color-bg-subtle-2", root.dark) : root.panelBg
@@ -121,12 +121,12 @@ Rectangle {
                         RowLayout {
                             anchors.fill: parent
                             anchors.leftMargin: Theme.space["2.5"]; anchors.rightMargin: Theme.space["1"]
-                            spacing: Theme.space["2"]
+                            spacing: Theme.space["1"]
                             Label {
                                 id: tabMethod; text: modelData.method || "GET"
                                 color: root.methodColorFn ? root.methodColorFn(modelData.method || "GET") : root.textMain
                                 font.bold: false; font.italic: true
-                                font.pixelSize: Theme.fontSize.body; font.family: Theme.fontFamily.mono
+                                font.pixelSize: Theme.fontSize.caption; font.family: Theme.fontFamily.mono
                             }
                             Label {
                                 id: tabName; text: modelData.name || modelData.url || "新接口"

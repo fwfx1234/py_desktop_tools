@@ -11,11 +11,13 @@ ColumnLayout {
     property color panelBorder: Theme.token("color-bg-subtle-2", dark)
     property color tableHeaderBg: Theme.token("color-table-header", dark)
     property int checkWidth: 22
-    property int keyWidth: 210
-    property int valueWeight: 2
+    property int keyWidth: 180
+    property int valueWeight: 4
     property int typeWidth: 86
-    property int descWidth: 180
+    property int descWidth: 112
+    property int magicWidth: 30
     property int deleteWidth: 26
+    property bool magicEnabled: true
     property bool showTypeColumn: true
     property string keyTitle: "参数"
     property string valueTitle: "参数值"
@@ -51,6 +53,10 @@ ColumnLayout {
                 Layout.horizontalStretchFactor: root.valueWeight
                 font.pixelSize: Theme.fontSize.caption
                 elide: Text.ElideRight
+            }
+            Item {
+                visible: root.magicEnabled
+                Layout.preferredWidth: root.magicEnabled ? root.magicWidth : 0
             }
             Label {
                 text: root.typeTitle

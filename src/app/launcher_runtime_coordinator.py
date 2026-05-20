@@ -10,7 +10,7 @@ from app.app_relauncher import restart_current_app
 from app.hotkey_coordinator import HotkeyCoordinator
 from app.logging import get_logger
 from app.platform.services import PlatformServices
-from app.plugin_surface_coordinator import is_qobject_alive
+from app.plugin_surface_coordinator import focused_window_point, is_qobject_alive
 from app.plugins.background_manager import BackgroundManager
 from app.plugins.launch_request import PluginLaunchRequest
 from app.plugins.manifest import PluginManifest
@@ -26,6 +26,17 @@ def _center_window_once(win: object, screen: object, width: int, height: int) ->
     y = geometry.y() + max(0, (geometry.height() - height) // 2)
     win.setX(x)
     win.setY(y)
+
+
+def _set_window_screen(win: object, screen: object) -> None:
+    if screen is None or not is_qobject_alive(win):
+        return
+    set_screen = getattr(win, "setScreen", None)
+    if callable(set_screen):
+        try:
+            set_screen(screen)
+        except RuntimeError:
+            return
 
 
 class LauncherRuntimeCoordinator:
@@ -56,8 +67,11 @@ class LauncherRuntimeCoordinator:
         self._log = get_logger("app.launcher_runtime")
         self._background_plugins_started = False
         self._launcher_prewarmed = False
+        self._hotkeys_registered = False
+        self._launcher_window_macos_configured = False
         self._last_hotkey_signal_at = 0.0
         self._last_show_request_at = 0.0
+        self._last_clipboard_open_at = 0.0
         self._hotkey_coordinator = HotkeyCoordinator(
             platform_services,
             qt_app,
@@ -80,21 +94,23 @@ class LauncherRuntimeCoordinator:
         self._bridge.pluginListItemActionActivated.connect(self.on_plugin_list_item_action)
         self._bridge.restartRequested.connect(self.restart_app)
         self._bridge.hideLauncherRequested.connect(self.hide_launcher)
+        self._bridge.appIndexChanged.connect(self.refresh_app_launcher_list)
 
     def install_hotkeys(self) -> None:
         started_at = perf_counter()
         filters = self._hotkey_coordinator.root_filters()
         self._qt_app.setProperty("_hotkeyFilters", filters)
-        self._log.info(
+        self._log.debug(
             "hotkey.install_filters",
             "安装全局热键事件过滤器",
             filterCount=len(filters),
             elapsedMs=int((perf_counter() - started_at) * 1000),
         )
         QTimer.singleShot(500, self.register_hotkeys)
-        self._log.info("hotkey.register_scheduled", "全局热键注册已调度", delayMs=500)
-        QTimer.singleShot(1200, self.prewarm_launcher_window)
-        self._log.info("launcher.prewarm_scheduled", "启动器窗口预热已调度", delayMs=1200)
+        self._log.debug("hotkey.register_scheduled", "全局热键注册已调度", delayMs=500)
+        if not self._is_macos():
+            QTimer.singleShot(1200, self.prewarm_launcher_window)
+            self._log.debug("launcher.prewarm_scheduled", "启动器窗口预热已调度", delayMs=1200)
 
     def shutdown(self) -> None:
         self._hotkey_coordinator.unregister_all()
@@ -105,14 +121,16 @@ class LauncherRuntimeCoordinator:
         self._background_plugins_started = True
         self._background_manager.start_all()
         self._connect_clipboard_config_changed()
-        self.refresh_clipboard_hotkey()
+        if self._hotkeys_registered:
+            self.refresh_clipboard_hotkey()
 
     def register_hotkeys(self) -> None:
         started_at = perf_counter()
         hwnd = 0
         if self._launcher_window and self._launcher_window.winId():
             hwnd = int(self._launcher_window.winId())
-        self._log.info(
+            self._configure_launcher_window_for_macos()
+        self._log.debug(
             "hotkey.register_begin",
             "开始注册全局热键",
             launcherWindowFound=self._launcher_window is not None,
@@ -124,9 +142,10 @@ class LauncherRuntimeCoordinator:
             self._manifests,
             clipboard_hotkey=self._clipboard_hotkey_text(),
         )
+        self._hotkeys_registered = True
         property_started_at = perf_counter()
         self._qt_app.setProperty("_pluginHotkeyFilters", self._hotkey_coordinator.plugin_filters())
-        self._log.info(
+        self._log.debug(
             "hotkey.register_end",
             "全局热键注册流程完成",
             pluginFilterCount=len(self._hotkey_coordinator.plugin_filters()),
@@ -141,14 +160,13 @@ class LauncherRuntimeCoordinator:
     def toggle_launcher(self) -> None:
         signal_at = perf_counter()
         self._last_hotkey_signal_at = signal_at
-        self._log.info("hotkey.launcher_signal", "启动器热键信号已触发")
         if self._launcher_window is None or not is_qobject_alive(self._launcher_window):
             self._log.warning("launcher.toggle_failed", "启动器窗口不存在或已销毁")
             return
         state_started_at = perf_counter()
         before_visible = bool(self._launcher_window.isVisible())
         before_active = bool(getattr(self._launcher_window, "isActive", lambda: False)())
-        self._log.info(
+        self._log.debug(
             "launcher.toggle_begin",
             "准备切换启动器窗口",
             visible=before_visible,
@@ -160,12 +178,16 @@ class LauncherRuntimeCoordinator:
         if self._launcher_window.isVisible():
             hide_started_at = perf_counter()
             self._launcher_window.hide()
-            self._log.info("launcher.hidden_by_hotkey", "启动器已由热键隐藏", elapsedMs=int((perf_counter() - hide_started_at) * 1000))
+            self._log.debug("launcher.hidden_by_hotkey", "启动器已由热键隐藏", elapsedMs=int((perf_counter() - hide_started_at) * 1000))
             return
+        self._restore_launcher_window_state()
         show_result = self._show_launcher_window(activate=True)
+        check_app_index = getattr(self._bridge, "checkAppIndex", None)
+        if callable(check_app_index):
+            check_app_index()
         self._last_show_request_at = perf_counter()
         elapsed_ms = show_result["elapsedMs"]
-        log_show = self._log.warning if elapsed_ms >= 120 else self._log.info
+        log_show = self._log.warning if elapsed_ms >= 120 else self._log.debug
         log_show(
             "launcher.show_requested",
             "已请求显示并激活启动器窗口",
@@ -181,7 +203,6 @@ class LauncherRuntimeCoordinator:
             elapsedMs=elapsed_ms,
         )
         QTimer.singleShot(50, lambda started_at=signal_at: self._activate_and_log_launcher_window("launcher.state_after_show_50ms", started_at))
-        QTimer.singleShot(200, self._log_launcher_window_state)
 
     def prewarm_launcher_window(self) -> None:
         if self._launcher_prewarmed:
@@ -191,29 +212,34 @@ class LauncherRuntimeCoordinator:
             self._log.warning("launcher.prewarm_skipped", "启动器窗口预热跳过，窗口不存在")
             return
         if self._launcher_window.isVisible():
-            self._log.info("launcher.prewarm_skipped", "启动器窗口预热跳过，窗口已显示")
+            self._log.debug("launcher.prewarm_skipped", "启动器窗口预热跳过，窗口已显示")
             return
         started_at = perf_counter()
         old_opacity = 1.0
+        show_result = {
+            "centerElapsedMs": 0,
+            "showCallElapsedMs": 0,
+            "raiseElapsedMs": 0,
+            "activateElapsedMs": 0,
+            "elapsedMs": 0,
+        }
+        hide_elapsed_ms = 0
         try:
             old_opacity = float(self._launcher_window.opacity())
         except (AttributeError, RuntimeError, TypeError, ValueError):
             old_opacity = 1.0
         try:
             self._launcher_window.setOpacity(0.0)
-        except (AttributeError, RuntimeError):
-            pass
-        self._launcher_window.setProperty("prewarming", True)
-        show_result = self._show_launcher_window(activate=False)
-        hide_started_at = perf_counter()
-        self._launcher_window.hide()
-        hide_elapsed_ms = int((perf_counter() - hide_started_at) * 1000)
-        self._launcher_window.setProperty("prewarming", False)
-        try:
-            self._launcher_window.setOpacity(old_opacity)
-        except (AttributeError, RuntimeError):
-            pass
-        self._log.info(
+            self._launcher_window.setProperty("prewarming", True)
+            show_result = self._show_launcher_window(activate=False)
+            hide_started_at = perf_counter()
+            self._launcher_window.hide()
+            hide_elapsed_ms = int((perf_counter() - hide_started_at) * 1000)
+        except Exception as exc:
+            self._log.warning("launcher.prewarm_failed", "启动器窗口预热失败", error=str(exc))
+        finally:
+            self._restore_launcher_window_state(opacity=old_opacity, hide=True)
+        self._log.debug(
             "launcher.prewarm_complete",
             "启动器窗口预热完成",
             centerElapsedMs=show_result["centerElapsedMs"],
@@ -229,7 +255,16 @@ class LauncherRuntimeCoordinator:
             self._launcher_window.hide()
 
     def open_clipboard_history(self) -> None:
-        self.open_plugin("clipboard", "", "", {})
+        now = perf_counter()
+        if now - self._last_clipboard_open_at < 0.35:
+            self._log.debug(
+                "hotkey.clipboard_debounced",
+                "剪切板热键重复触发已忽略",
+                sinceLastMs=int((now - self._last_clipboard_open_at) * 1000),
+            )
+            return
+        self._last_clipboard_open_at = now
+        self.open_plugin("clipboard", "", "", {"openInWindow": True})
 
     def open_plugin(
         self,
@@ -320,6 +355,16 @@ class LauncherRuntimeCoordinator:
         items = self._session_manager.activate_list_item_action(plugin_id, item_id, action_id)
         self._bridge.setPluginListItems(items)
 
+    def refresh_app_launcher_list(self) -> None:
+        if self._launcher_window is not None and is_qobject_alive(self._launcher_window):
+            plugin_id = str(self._launcher_window.property("mixedPluginId") or "")
+            plugin_mode = str(self._launcher_window.property("mixedPluginMode") or "")
+            if plugin_id != "app-launcher" or plugin_mode != "list":
+                return
+        items = self._session_manager.list_items("app-launcher")
+        if items:
+            self._bridge.setPluginListItems(items)
+
     def restart_app(self) -> None:
         restart_current_app()
         self._on_quit()
@@ -338,7 +383,15 @@ class LauncherRuntimeCoordinator:
     def _center_launcher_window(self) -> None:
         if self._launcher_window is None or not is_qobject_alive(self._launcher_window):
             return
-        screen = self._qt_app.screenAt(QCursor.pos())
+        screen = None
+        focus_point = focused_window_point()
+        if focus_point is not None:
+            try:
+                screen = self._qt_app.screenAt(focus_point)
+            except (RuntimeError, TypeError):
+                screen = None
+        if screen is None:
+            screen = self._qt_app.screenAt(QCursor.pos())
         if screen is None:
             try:
                 screen = self._launcher_window.screen()
@@ -346,12 +399,30 @@ class LauncherRuntimeCoordinator:
                 screen = None
         if screen is None:
             screen = self._qt_app.primaryScreen()
+        _set_window_screen(self._launcher_window, screen)
         _center_window_once(
             self._launcher_window,
             screen,
             int(self._launcher_window.width()) or 800,
             int(self._launcher_window.height()) or 600,
         )
+
+    def _restore_launcher_window_state(self, *, opacity: float = 1.0, hide: bool = False) -> None:
+        if self._launcher_window is None or not is_qobject_alive(self._launcher_window):
+            return
+        try:
+            self._launcher_window.setProperty("prewarming", False)
+        except RuntimeError:
+            return
+        try:
+            self._launcher_window.setOpacity(opacity)
+        except (AttributeError, RuntimeError):
+            pass
+        if hide:
+            try:
+                self._launcher_window.hide()
+            except RuntimeError:
+                pass
 
     def _show_launcher_window(self, *, activate: bool) -> dict[str, int]:
         if self._launcher_window is None or not is_qobject_alive(self._launcher_window):
@@ -364,10 +435,12 @@ class LauncherRuntimeCoordinator:
             }
         started_at = perf_counter()
         center_started_at = perf_counter()
+        self._configure_launcher_window_for_macos()
         self._center_launcher_window()
         center_elapsed_ms = int((perf_counter() - center_started_at) * 1000)
         show_call_started_at = perf_counter()
         self._launcher_window.show()
+        self._configure_launcher_window_for_macos(force=True)
         show_call_elapsed_ms = int((perf_counter() - show_call_started_at) * 1000)
         raise_started_at = perf_counter()
         if activate:
@@ -377,6 +450,7 @@ class LauncherRuntimeCoordinator:
         raise_elapsed_ms = int((perf_counter() - raise_started_at) * 1000)
         activate_started_at = perf_counter()
         if activate:
+            self._activate_launcher_window_native()
             self._launcher_window.requestActivate()
         activate_elapsed_ms = int((perf_counter() - activate_started_at) * 1000)
         return {
@@ -392,7 +466,7 @@ class LauncherRuntimeCoordinator:
             self._log.warning("launcher.state_after_show_missing", "显示请求后启动器窗口不存在或已销毁")
             return
         now = perf_counter()
-        self._log.info(
+        self._log.debug(
             event,
             "显示请求后的启动器窗口状态",
             visible=bool(self._launcher_window.isVisible()),
@@ -407,11 +481,40 @@ class LauncherRuntimeCoordinator:
 
     def _activate_and_log_launcher_window(self, event: str, signal_at: float) -> None:
         if self._launcher_window is not None and is_qobject_alive(self._launcher_window):
+            self._configure_launcher_window_for_macos(force=True)
             raise_window = getattr(self._launcher_window, "raise_", None)
             if callable(raise_window):
                 raise_window()
+            self._activate_launcher_window_native()
             self._launcher_window.requestActivate()
         self._log_launcher_window_state(event, signal_at)
+
+    def _configure_launcher_window_for_macos(self, *, force: bool = False) -> None:
+        if self._launcher_window_macos_configured and not force:
+            return
+        if not self._is_macos():
+            return
+        if self._launcher_window is None or not is_qobject_alive(self._launcher_window):
+            return
+        try:
+            from app.platform.macos.windowing import configure_launcher_window
+
+            self._launcher_window_macos_configured = configure_launcher_window(self._launcher_window)
+        except Exception as exc:
+            self._log.debug("launcher.macos_window_config_failed", "macOS 启动器窗口配置失败", error=str(exc))
+
+    def _activate_launcher_window_native(self) -> None:
+        if not self._is_macos():
+            return
+        try:
+            from app.platform.macos.windowing import activate_window
+
+            activate_window(self._launcher_window)
+        except Exception as exc:
+            self._log.debug("launcher.macos_activate_failed", "macOS 启动器窗口原生激活失败", error=str(exc))
+
+    def _is_macos(self) -> bool:
+        return getattr(self._platform_services.info, "name", "") == "macos"
 
     def _clipboard_hotkey_text(self) -> str:
         service = self._plugin_context.services.clipboard

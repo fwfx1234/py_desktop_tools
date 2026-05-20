@@ -9,6 +9,11 @@
   "contextProperty": "clipboardVm",
   "category": "tool",
   "activation": "background",
+  "window": {
+    "width": 980,
+    "height": 640,
+    "alwaysOnTop": true
+  },
   "order": 7,
   "commands": [
     {

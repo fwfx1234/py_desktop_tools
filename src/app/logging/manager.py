@@ -138,6 +138,8 @@ class LoggingManager:
         level: str | int = "INFO",
         console: bool = True,
         retention_days: int = 7,
+        file_level: str | int | None = None,
+        qt_level: str | int | None = None,
     ) -> None:
         self.app_name = app_name
         self.app_version = app_version
@@ -146,6 +148,8 @@ class LoggingManager:
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self.retention_days = max(1, int(retention_days))
         self.level = self._resolve_level(level)
+        self.file_level = self._resolve_level(file_level if file_level is not None else os.getenv("PY_DESKTOP_TOOLS_LOG_FILE_LEVEL", "WARNING"))
+        self.qt_level = self._resolve_level(qt_level if qt_level is not None else os.getenv("PY_DESKTOP_TOOLS_QT_LOG_LEVEL", "WARNING"))
         self._plugin_handlers: dict[str, logging.Handler] = {}
         self._root_handlers: list[logging.Handler] = []
         self._qt_handler: logging.Handler | None = None
@@ -188,12 +192,14 @@ class LoggingManager:
         qt_logger = logging.getLogger("qt")
         qt_logger.setLevel(logging.DEBUG)
         qt_logger.propagate = True
-        handler = self._create_file_handler("qt.log", level=logging.DEBUG)
+        handler = self._create_file_handler("qt.log", level=self.qt_level)
         qt_logger.addHandler(handler)
         self._qt_handler = handler
 
         def _handler(mode, context, message):
             level = self._qt_level(mode)
+            if level < self.qt_level:
+                return
             extra = {
                 "app_log_event": "qt.message",
                 "app_log_message": str(message),
@@ -271,7 +277,7 @@ class LoggingManager:
             self._root_handlers.append(console_handler)
 
         try:
-            app_handler = self._create_file_handler("app.log", level=logging.DEBUG)
+            app_handler = self._create_file_handler("app.log", level=self.file_level)
             root.addHandler(app_handler)
             self._root_handlers.append(app_handler)
 
@@ -312,7 +318,7 @@ class LoggingManager:
             if self._plugin_handlers[safe_plugin_id] not in logger.handlers:
                 logger.addHandler(self._plugin_handlers[safe_plugin_id])
             return
-        handler = self._create_file_handler(Path("plugins") / f"{safe_plugin_id}.log", level=logging.DEBUG)
+        handler = self._create_file_handler(Path("plugins") / f"{safe_plugin_id}.log", level=self.file_level)
         self._plugin_handlers[safe_plugin_id] = handler
         logger.addHandler(handler)
 
@@ -376,6 +382,8 @@ def init_logging(
     level: str | int = "INFO",
     console: bool = True,
     retention_days: int = 7,
+    file_level: str | int | None = None,
+    qt_level: str | int | None = None,
 ) -> LoggingManager:
     global _MANAGER
     if _MANAGER is None:
@@ -386,6 +394,8 @@ def init_logging(
             level=level,
             console=console,
             retention_days=retention_days,
+            file_level=file_level,
+            qt_level=qt_level,
         )
     return _MANAGER
 

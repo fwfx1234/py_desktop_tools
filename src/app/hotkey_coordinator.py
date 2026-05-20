@@ -78,7 +78,7 @@ class HotkeyCoordinator:
                 elapsedMs=int((perf_counter() - launcher_started_at) * 1000),
             )
         else:
-            self._log.info(
+            self._log.debug(
                 "hotkey.registered",
                 "全局热键注册成功",
                 hotkey=self._platform.default_launcher_hotkey,
@@ -92,7 +92,7 @@ class HotkeyCoordinator:
         clipboard_elapsed_ms = int((perf_counter() - clipboard_started_at) * 1000)
         plugins_started_at = perf_counter()
         self.refresh_plugin_hotkeys(manifests or [])
-        self._log.info(
+        self._log.debug(
             "hotkey.register_all_complete",
             "全部热键注册流程完成",
             manifestCount=len(manifests or []),
@@ -105,7 +105,7 @@ class HotkeyCoordinator:
         started_at = perf_counter()
         self._clipboard_mgr.unregister()
         if not hotkey:
-            self._log.info("hotkey.clipboard_disabled", "剪切板热键为空，跳过注册", elapsedMs=int((perf_counter() - started_at) * 1000))
+            self._log.debug("hotkey.clipboard_disabled", "剪切板热键为空，跳过注册", elapsedMs=int((perf_counter() - started_at) * 1000))
             return
         if not self._clipboard_mgr.register(hotkey):
             self._log.warning(
@@ -130,7 +130,7 @@ class HotkeyCoordinator:
         started_at = perf_counter()
         self._clear_plugin_hotkeys()
         self._register_plugins(manifests)
-        self._log.info(
+        self._log.debug(
             "hotkey.plugin_refresh_complete",
             "插件热键刷新完成",
             manifestCount=len(manifests),

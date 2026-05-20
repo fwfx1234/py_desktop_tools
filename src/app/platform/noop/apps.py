@@ -14,3 +14,6 @@ class NoopAppIndexer:
     ) -> list[AppEntry]:
         del icon_dir, extract_icons
         return []
+
+    def quick_signature(self) -> str:
+        return "noop-apps-v1:0"

@@ -6,4 +6,4 @@ from .view_model import DownloadViewModel
 
 
 def create_runtime() -> SimpleQmlRuntime:
-    return SimpleQmlRuntime(lambda _ctx: DownloadViewModel())
+    return SimpleQmlRuntime(lambda ctx: DownloadViewModel(platform_api=ctx.platform))

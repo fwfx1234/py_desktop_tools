@@ -217,6 +217,8 @@ class RequestEditorState:
             self.cookie_rows = rows
         elif section == "body":
             self.body_form_rows = rows
+            if self.current_body_mode == 1:
+                self.save_body_to_mode()
 
     def toggle_row_enabled(self, section: str, row_index: int, checked: bool) -> bool:
         rows = self.get_rows(section)
@@ -237,7 +239,26 @@ class RequestEditorState:
         self.set_rows(section, normalize_rows(rows, template))
         return True
 
+    def edit_row_key_live(self, section: str, row_index: int, key_text: str) -> bool:
+        rows = self.get_rows(section)
+        if not (0 <= row_index < len(rows)):
+            return False
+        rows[row_index]["key"] = key_text
+        if key_text:
+            rows[row_index]["enabled"] = True
+        self.set_rows(section, rows)
+        return True
+
     def edit_row_value(self, section: str, row_index: int, value_text: str) -> bool:
+        rows = self.get_rows(section)
+        if not (0 <= row_index < len(rows)):
+            return False
+        rows[row_index]["value"] = value_text
+        template = empty_form_row() if section == "body" else empty_kv_row()
+        self.set_rows(section, normalize_rows(rows, template))
+        return True
+
+    def edit_row_value_live(self, section: str, row_index: int, value_text: str) -> bool:
         rows = self.get_rows(section)
         if not (0 <= row_index < len(rows)):
             return False

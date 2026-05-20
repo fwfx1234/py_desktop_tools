@@ -10,6 +10,7 @@ from pathlib import Path
 from PySide6.QtGui import QFont, QFontDatabase
 from PySide6.QtQuick import QQuickWindow
 from PySide6.QtQuickControls2 import QQuickStyle
+from PySide6.QtWebEngineQuick import QtWebEngineQuick
 from PySide6.QtWidgets import QApplication
 
 from .app_runtime import ApplicationRuntime
@@ -25,8 +26,20 @@ def _first_available_font(candidates: list[str]) -> str:
 
 
 def _configure_fonts(qt_app: QApplication) -> None:
-    ui_family = _first_available_font(["Microsoft YaHei UI", "Segoe UI", "Microsoft YaHei"])
-    mono_family = _first_available_font(["Consolas", "Cascadia Mono", "Microsoft YaHei UI"])
+    ui_family = _first_available_font([
+        "PingFang SC",
+        "Hiragino Sans GB",
+        "Microsoft YaHei UI",
+        "Segoe UI",
+        "Microsoft YaHei",
+    ])
+    mono_family = _first_available_font([
+        "SF Mono",
+        "Menlo",
+        "Consolas",
+        "Cascadia Mono",
+        "Microsoft YaHei UI",
+    ])
 
     QFont.insertSubstitution("IBM Plex Sans", ui_family)
     QFont.insertSubstitution("JetBrains Mono", mono_family)
@@ -60,7 +73,7 @@ def main() -> int:
     logging_manager = init_logging(
         app_name="py-desktop-tools",
         app_version=get_app_version(),
-        level=os.getenv("PY_DESKTOP_TOOLS_LOG_LEVEL", "INFO"),
+        level=os.getenv("PY_DESKTOP_TOOLS_LOG_LEVEL", "WARNING"),
         console=console_logging,
         retention_days=int(os.getenv("PY_DESKTOP_TOOLS_LOG_RETENTION_DAYS", "7") or 7),
     )
@@ -73,6 +86,7 @@ def main() -> int:
     QQuickStyle.setStyle("Basic")
     style_elapsed_ms = int((perf_counter() - style_started_at) * 1000)
     qt_app_started_at = perf_counter()
+    QtWebEngineQuick.initialize()
     qt_app = QApplication(sys.argv)
     qt_app_elapsed_ms = int((perf_counter() - qt_app_started_at) * 1000)
     fonts_started_at = perf_counter()

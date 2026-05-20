@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QSystemTrayIcon, QMenu
@@ -38,10 +40,12 @@ class SystemTrayManager(QObject):
         try:
             import qtawesome as qta
 
-            icon = qta.icon("fa5s.rocket", color="#8B5CF6")
+            color = "#FFFFFF" if sys.platform == "darwin" else "#8B5CF6"
+            icon = qta.icon("fa5s.rocket", color=color)
+            if sys.platform == "darwin" and hasattr(icon, "setIsMask"):
+                icon.setIsMask(True)
             self._tray.setIcon(icon)
         except Exception:
-            # 回退：使用空图标
             self._tray.setIcon(QIcon())
 
     def _on_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:

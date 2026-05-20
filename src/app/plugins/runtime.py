@@ -15,6 +15,7 @@ class PluginContext:
     """Services a plugin runtime can use without importing the app kernel."""
 
     command_index: object | None = None
+    command_service: object | None = None
     platform: object | None = None
     services: ServiceRegistry = field(default_factory=ServiceRegistry)
 

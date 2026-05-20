@@ -18,7 +18,7 @@ Popup {
     signal environmentSelected(int index)
     signal manageRequested()
 
-    width: 210
+    width: 260
     padding: 0
     modal: false
     closePolicy: Popup.CloseOnPressOutside | Popup.CloseOnEscape
@@ -38,10 +38,10 @@ Popup {
                 required property int index
                 required property var modelData
                 width: root.width
-                height: 44
+                height: 52
                 color: index === root.currentEnvIndex
                     ? Theme.token("color-bg-subtle", root.dark)
-                    : "transparent"
+                    : (envMouse.containsMouse ? Theme.token("color-bg-subtle-2", root.dark) : "transparent")
                 radius: index === root.currentEnvIndex ? Theme.radii.md : 0
 
                 RowLayout {
@@ -50,23 +50,54 @@ Popup {
                     anchors.rightMargin: Theme.space["2.5"]
                     spacing: Theme.space["2"]
 
-                    Label {
-                        text: root.envTagFn ? root.envTagFn(modelData.name) : ""
-                        color: root.envTagColorFn ? root.envTagColorFn(modelData.name) : Theme.token("color-text-primary", root.dark)
-                        font.bold: false
-                        font.pixelSize: Theme.fontSize.caption
-                        Layout.preferredWidth: 18
+                    Rectangle {
+                        Layout.preferredWidth: 24
+                        Layout.preferredHeight: 24
+                        radius: 12
+                        color: root.envTagColorFn ? root.envTagColorFn(modelData.name) : Theme.token("color-primary-active", root.dark)
+                        Label {
+                            anchors.centerIn: parent
+                            text: root.envTagFn ? root.envTagFn(modelData.name) : ""
+                            color: "white"
+                            font.bold: true
+                            font.pixelSize: Theme.fontSize.caption
+                        }
                     }
-                    Label {
-                        text: modelData.name
-                        color: Theme.token("color-text-primary", root.dark)
-                        font.pixelSize: Theme.fontSize.body
-                        font.bold: false
+
+                    ColumnLayout {
                         Layout.fillWidth: true
+                        spacing: 0
+                        Label {
+                            Layout.fillWidth: true
+                            text: modelData.name || "未命名环境"
+                            color: Theme.token("color-text-primary", root.dark)
+                            font.pixelSize: Theme.fontSize.body
+                            font.bold: index === root.currentEnvIndex
+                            elide: Text.ElideRight
+                        }
+                        Label {
+                            Layout.fillWidth: true
+                            text: modelData.baseUrl || "未设置 Base URL"
+                            color: Theme.token("color-text-secondary", root.dark)
+                            font.pixelSize: Theme.fontSize.caption
+                            elide: Text.ElideMiddle
+                        }
+                    }
+
+                    UiIcon {
+                        visible: index === root.currentEnvIndex
+                        useQta: true
+                        name: "mdi6.check"
+                        color: Theme.token("color-primary-active", root.dark)
+                        iconSize: 16
+                        Layout.preferredWidth: 16
+                        Layout.preferredHeight: 16
                     }
                 }
                 MouseArea {
+                    id: envMouse
                     anchors.fill: parent
+                    hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
                         root.environmentSelected(index)
@@ -80,13 +111,21 @@ Popup {
 
         Rectangle {
             width: root.width
-            height: 44
-            color: "transparent"
+            height: 40
+            color: manageMouse.containsMouse ? Theme.token("color-bg-subtle-2", root.dark) : "transparent"
             RowLayout {
                 anchors.fill: parent
                 anchors.leftMargin: Theme.space["2.5"]
                 anchors.rightMargin: Theme.space["2.5"]
                 spacing: Theme.space["2"]
+                UiIcon {
+                    useQta: true
+                    name: "mdi6.cog-outline"
+                    color: Theme.token("color-primary-active", root.dark)
+                    iconSize: 16
+                    Layout.preferredWidth: 16
+                    Layout.preferredHeight: 16
+                }
                 Label {
                     text: "管理环境"
                     color: Theme.token("color-primary-active", root.dark)
@@ -95,7 +134,9 @@ Popup {
                 }
             }
             MouseArea {
+                id: manageMouse
                 anchors.fill: parent
+                hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: {
                     root.close()

@@ -7,8 +7,7 @@ from .view_model import QrViewModel
 
 class QrRuntime:
     def on_enter(self, ctx: PluginContext, action: PluginAction) -> QmlPluginSession:
-        del ctx
-        view_model = QrViewModel(action.input_text)
+        view_model = QrViewModel(action.input_text, platform_api=ctx.platform)
         return QrSession(action.manifest, view_model)
 
     def on_exit(self) -> None:

@@ -12,9 +12,14 @@ def _create_backend():
 
         return Win32ClipboardBackend()
     if sys.platform == "darwin":
-        from app.services.clipboard.backends.pyperclip_backend import PyperclipClipboardBackend
+        try:
+            from app.services.clipboard.backends.macos_backend import MacOSClipboardBackend
 
-        return PyperclipClipboardBackend()
+            return MacOSClipboardBackend()
+        except Exception:
+            from app.services.clipboard.backends.pyperclip_backend import PyperclipClipboardBackend
+
+            return PyperclipClipboardBackend()
     from app.services.clipboard.backends.noop_backend import NoopClipboardBackend
 
     return NoopClipboardBackend()

@@ -767,14 +767,14 @@ Rectangle {
 
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 44
+            Layout.preferredHeight: 40
             color: "transparent"
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: Theme.space["3"]
+                anchors.leftMargin: Theme.space["2.5"]
                 anchors.rightMargin: Theme.space["2"]
                 Label {
-                    text: "接口管理"
+                    text: "接口"
                     Layout.fillWidth: true
                     color: root.textMain
                     font.bold: false
@@ -833,12 +833,14 @@ Rectangle {
             Layout.fillWidth: true
             Layout.leftMargin: Theme.space["2.5"]
             Layout.rightMargin: Theme.space["2.5"]
-            Layout.bottomMargin: 4
+            Layout.bottomMargin: Theme.space["1"]
+            spacing: Theme.space["1"]
             UiTextField {
                 id: searchInput
                 Layout.fillWidth: true
+                Layout.preferredHeight: 28
                 dark: root.dark
-                placeholderText: "搜索"
+                placeholderText: "搜索接口"
             }
             Rectangle {
                 id: filterButton
@@ -947,17 +949,29 @@ Rectangle {
             Layout.fillWidth: true
             implicitWidth: parent ? parent.width : 0
             visible: root.nodeVisible(nodeRoot.node)
-            implicitHeight: visible ? 30 : 0
+            implicitHeight: visible ? 28 : 0
 
             Rectangle {
                 id: nodeRow
                 anchors.fill: parent
-                height: 30
-                color: nodeMouse.containsMouse
+                height: 28
+                property bool active: root.selectedNodeId.length > 0 && root.selectedNodeId === nodeRoot.nodeId
+                color: active
+                    ? Theme.token("color-primary-bg", root.dark)
+                    : (nodeMouse.containsMouse
                     ? Theme.token("color-bg-subtle-2", root.dark)
-                    : "transparent"
+                    : "transparent")
                 border.width: 0
                 border.color: "transparent"
+
+                Rectangle {
+                    visible: nodeRow.active
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    width: 2
+                    color: Theme.token("color-primary-active", root.dark)
+                }
 
                 RowLayout {
                     anchors.fill: parent
@@ -1001,8 +1015,8 @@ Rectangle {
                         color: root.methodColorFn ? root.methodColorFn(nodeRoot.node ? nodeRoot.node.method : "") : root.textMuted
                         font.bold: false
                         font.family: Theme.fontFamily.mono
-                        font.pixelSize: 10
-                        Layout.preferredWidth: 32
+                        font.pixelSize: Theme.fontSize.caption
+                        Layout.preferredWidth: 36
                     }
 
                     Image {
@@ -1018,7 +1032,7 @@ Rectangle {
                         text: (nodeRoot.node ? nodeRoot.node.name : "") + ((nodeRoot.node && nodeRoot.node.count) ? " (" + nodeRoot.node.count + ")" : "")
                         Layout.fillWidth: true
                         elide: Text.ElideRight
-                        color: root.textMain
+                        color: nodeRow.active ? Theme.token("color-primary-active", root.dark) : root.textMain
                         font.pixelSize: Theme.fontSize.body
                         font.bold: false
                     }
@@ -1047,14 +1061,16 @@ Rectangle {
                     }
                     y: 3
                     width: Math.max(80, nodeRow.width - x - Theme.space["2"])
-                    height: 24
+                    height: 22
                     text: nodeRoot.node ? (nodeRoot.node.name || "") : ""
                     selectByMouse: true
                     leftPadding: 6
                     rightPadding: 6
-                    topPadding: 2
-                    bottomPadding: 2
+                    topPadding: 0
+                    bottomPadding: 0
                     color: root.textMain
+                    font.pixelSize: Theme.fontSize.body
+                    font.family: Theme.fontFamily.ui
                     background: Rectangle {
                         radius: 3
                         border.width: 1
@@ -1278,497 +1294,192 @@ Rectangle {
     Popup {
         id: contextMenu
         parent: Overlay.overlay
-        width: 160
-        height: contextMenuColumn.implicitHeight
-        padding: 0
+        width: 180
+        height: contextMenuColumn.implicitHeight + 8
+        padding: 4
         modal: false
         focus: true
         property real _preferredX: 0
         property real _preferredY: 0
         closePolicy: Popup.CloseOnPressOutside | Popup.CloseOnEscape
-        background: UiPopupSurface {
+        enter: Transition {
+            ParallelAnimation {
+                NumberAnimation { property: "opacity"; from: 0.0; to: 1.0; duration: 80; easing.type: Easing.OutCubic }
+                NumberAnimation { property: "scale"; from: 0.98; to: 1.0; duration: 80; easing.type: Easing.OutCubic }
+            }
+        }
+        background: UiMenuSurface {
             dark: root.dark
-            radius: Theme.radii.md
-            fillColor: Theme.token("color-bg-surface", root.dark)
+            radius: 8
         }
         contentItem: Column {
             id: contextMenuColumn
             spacing: 0
 
-            Rectangle {
-                width: contextMenu.width
-                height: 34
+            UiMenuItem {
+                width: contextMenu.width - 8
+                dark: root.dark
                 visible: !root.contextNode
-                color: ctxRootEndpointMouse.containsMouse ? Theme.token("color-bg-subtle", root.dark) : "transparent"
-                Label {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.leftMargin: Theme.space["2.5"]
-                    text: "新建接口"
-                    color: root.textMain
-                    font.pixelSize: Theme.fontSize.body
-                }
-                MouseArea {
-                    id: ctxRootEndpointMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        root.addRootEndpoint()
-                        contextMenu.close()
-                    }
-                }
+                text: "新建接口"
+                onTriggered: { root.addRootEndpoint(); contextMenu.close() }
+            }
+            UiMenuItem {
+                width: contextMenu.width - 8
+                dark: root.dark
+                visible: !root.contextNode
+                text: "新建分组"
+                onTriggered: { root.addRootFolder(); contextMenu.close() }
+            }
+            UiMenuItem {
+                width: contextMenu.width - 8
+                dark: root.dark
+                visible: !root.contextNode
+                text: "导入 OpenAPI"
+                onTriggered: { root.importRequested(); contextMenu.close() }
+            }
+            UiMenuItem {
+                width: contextMenu.width - 8
+                dark: root.dark
+                visible: !root.contextNode
+                text: "全部展开"
+                onTriggered: { root.setAllExpanded(true); contextMenu.close() }
+            }
+            UiMenuItem {
+                width: contextMenu.width - 8
+                dark: root.dark
+                visible: !root.contextNode
+                text: "全部收起"
+                onTriggered: { root.setAllExpanded(false); contextMenu.close() }
             }
 
-            Rectangle {
-                width: contextMenu.width
-                height: 34
-                visible: !root.contextNode
-                color: ctxRootFolderMouse.containsMouse ? Theme.token("color-bg-subtle", root.dark) : "transparent"
-                Label {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.leftMargin: Theme.space["2.5"]
-                    text: "新建分组"
-                    color: root.textMain
-                    font.pixelSize: Theme.fontSize.body
-                }
-                MouseArea {
-                    id: ctxRootFolderMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        root.addRootFolder()
-                        contextMenu.close()
-                    }
-                }
-            }
-
-            Rectangle {
-                width: contextMenu.width
-                height: 34
-                visible: !root.contextNode
-                color: ctxRootImportMouse.containsMouse ? Theme.token("color-bg-subtle", root.dark) : "transparent"
-                Label {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.leftMargin: Theme.space["2.5"]
-                    text: "导入 OpenAPI"
-                    color: root.textMain
-                    font.pixelSize: Theme.fontSize.body
-                }
-                MouseArea {
-                    id: ctxRootImportMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        root.importRequested()
-                        contextMenu.close()
-                    }
-                }
-            }
-
-            Rectangle {
-                width: contextMenu.width
-                height: 34
-                visible: !root.contextNode
-                color: ctxRootExpandMouse.containsMouse ? Theme.token("color-bg-subtle", root.dark) : "transparent"
-                Label {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.leftMargin: Theme.space["2.5"]
-                    text: "全部展开"
-                    color: root.textMain
-                    font.pixelSize: Theme.fontSize.body
-                }
-                MouseArea {
-                    id: ctxRootExpandMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        root.setAllExpanded(true)
-                        contextMenu.close()
-                    }
-                }
-            }
-
-            Rectangle {
-                width: contextMenu.width
-                height: 34
-                visible: !root.contextNode
-                color: ctxRootCollapseMouse.containsMouse ? Theme.token("color-bg-subtle", root.dark) : "transparent"
-                Label {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.leftMargin: Theme.space["2.5"]
-                    text: "全部收起"
-                    color: root.textMain
-                    font.pixelSize: Theme.fontSize.body
-                }
-                MouseArea {
-                    id: ctxRootCollapseMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        root.setAllExpanded(false)
-                        contextMenu.close()
-                    }
-                }
-            }
-
-            Rectangle {
-                width: contextMenu.width
-                height: 34
+            UiMenuItem {
+                width: contextMenu.width - 8
+                dark: root.dark
                 visible: !!(root.contextNode && root.isEndpointNode(root.contextNode))
-                color: ctxNewCaseMouse.containsMouse ? Theme.token("color-bg-subtle", root.dark) : "transparent"
-                Label {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.leftMargin: Theme.space["2.5"]
-                    text: "新建场景"
-                    color: root.textMain
-                    font.pixelSize: Theme.fontSize.body
-                }
-                MouseArea {
-                    id: ctxNewCaseMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        root.addCaseAtPath(root.currentContextPath(), true)
-                        contextMenu.close()
-                    }
-                }
+                text: "新建场景"
+                onTriggered: { root.addCaseAtPath(root.currentContextPath(), true); contextMenu.close() }
             }
-
-            Rectangle {
-                width: contextMenu.width
-                height: 34
+            UiMenuItem {
+                width: contextMenu.width - 8
+                dark: root.dark
                 visible: !!(root.contextNode && root.isCaseNode(root.contextNode))
-                color: ctxNewSiblingCaseMouse.containsMouse ? Theme.token("color-bg-subtle", root.dark) : "transparent"
-                Label {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.leftMargin: Theme.space["2.5"]
-                    text: "新建同级场景"
-                    color: root.textMain
-                    font.pixelSize: Theme.fontSize.body
-                }
-                MouseArea {
-                    id: ctxNewSiblingCaseMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        root.addCaseAtPath(root.currentContextPath(), false)
-                        contextMenu.close()
-                    }
-                }
+                text: "新建同级场景"
+                onTriggered: { root.addCaseAtPath(root.currentContextPath(), false); contextMenu.close() }
             }
-
-            Rectangle {
-                width: contextMenu.width
-                height: 34
+            UiMenuItem {
+                width: contextMenu.width - 8
+                dark: root.dark
                 visible: !!(root.contextNode && root.isFolderNode(root.contextNode))
-                color: ctxNewEndpointMouse.containsMouse ? Theme.token("color-bg-subtle", root.dark) : "transparent"
-                Label {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.leftMargin: Theme.space["2.5"]
-                    text: "新建子接口"
-                    color: root.textMain
-                    font.pixelSize: Theme.fontSize.body
-                }
-                MouseArea {
-                    id: ctxNewEndpointMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        root.addEndpointAtPath(root.currentContextPath(), true)
-                        contextMenu.close()
-                    }
-                }
+                text: "新建子接口"
+                onTriggered: { root.addEndpointAtPath(root.currentContextPath(), true); contextMenu.close() }
             }
-
-            Rectangle {
-                width: contextMenu.width
-                height: 34
+            UiMenuItem {
+                width: contextMenu.width - 8
+                dark: root.dark
                 visible: !!(root.contextNode && !root.isCaseNode(root.contextNode))
-                color: ctxNewSiblingEndpointMouse.containsMouse ? Theme.token("color-bg-subtle", root.dark) : "transparent"
-                Label {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.leftMargin: Theme.space["2.5"]
-                    text: "新建同级接口"
-                    color: root.textMain
-                    font.pixelSize: Theme.fontSize.body
-                }
-                MouseArea {
-                    id: ctxNewSiblingEndpointMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        root.addEndpointAtPath(root.currentContextPath(), false)
-                        contextMenu.close()
-                    }
-                }
+                text: "新建同级接口"
+                onTriggered: { root.addEndpointAtPath(root.currentContextPath(), false); contextMenu.close() }
             }
-
-            Rectangle {
-                width: contextMenu.width
-                height: 34
+            UiMenuItem {
+                width: contextMenu.width - 8
+                dark: root.dark
                 visible: !!(root.contextNode && root.isFolderNode(root.contextNode))
-                color: ctxNewChildFolderMouse.containsMouse ? Theme.token("color-bg-subtle", root.dark) : "transparent"
-                Label {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.leftMargin: Theme.space["2.5"]
-                    text: "新建子分组"
-                    color: root.textMain
-                    font.pixelSize: Theme.fontSize.body
-                }
-                MouseArea {
-                    id: ctxNewChildFolderMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        root.addFolderAtPath(root.currentContextPath(), true)
-                        contextMenu.close()
-                    }
-                }
+                text: "新建子分组"
+                onTriggered: { root.addFolderAtPath(root.currentContextPath(), true); contextMenu.close() }
             }
-
-            Rectangle {
-                width: contextMenu.width
-                height: 34
+            UiMenuItem {
+                width: contextMenu.width - 8
+                dark: root.dark
                 visible: !!(root.contextNode && !root.isCaseNode(root.contextNode))
-                color: ctxNewFolderMouse.containsMouse ? Theme.token("color-bg-subtle", root.dark) : "transparent"
-                Label {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.leftMargin: Theme.space["2.5"]
-                    text: "新建同级分组"
-                    color: root.textMain
-                    font.pixelSize: Theme.fontSize.body
-                }
-                MouseArea {
-                    id: ctxNewFolderMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        root.addFolderAtPath(root.currentContextPath(), false)
-                        contextMenu.close()
-                    }
-                }
+                text: "新建同级分组"
+                onTriggered: { root.addFolderAtPath(root.currentContextPath(), false); contextMenu.close() }
             }
 
-            Rectangle {
-                width: contextMenu.width
-                height: 1
+            UiMenuSeparator {
+                width: contextMenu.width - 8
+                dark: root.dark
                 visible: !!root.contextNode
-                color: root.panelBorder
             }
 
-            Rectangle {
-                width: contextMenu.width
-                height: 34
+            UiMenuItem {
+                width: contextMenu.width - 8
+                dark: root.dark
                 visible: !!(root.contextNode && root.canHaveChildrenNode(root.contextNode) && root.hasChildNodes(root.contextNode))
-                color: ctxExpandNodeMouse.containsMouse ? Theme.token("color-bg-subtle", root.dark) : "transparent"
-                Label {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.leftMargin: Theme.space["2.5"]
-                    text: root.contextNode && root.contextNode.expanded ? "收起" : "展开"
-                    color: root.textMain
-                    font.pixelSize: Theme.fontSize.body
-                }
-                MouseArea {
-                    id: ctxExpandNodeMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        root.setContextNodeExpanded(!(root.contextNode && root.contextNode.expanded))
-                        contextMenu.close()
-                    }
+                text: root.contextNode && root.contextNode.expanded ? "收起" : "展开"
+                onTriggered: {
+                    root.setContextNodeExpanded(!(root.contextNode && root.contextNode.expanded))
+                    contextMenu.close()
                 }
             }
-
-            Rectangle {
-                width: contextMenu.width
-                height: 34
+            UiMenuItem {
+                width: contextMenu.width - 8
+                dark: root.dark
                 visible: !!(root.contextNode && !root.isCaseNode(root.contextNode))
-                color: ctxMoveMouse.containsMouse ? Theme.token("color-bg-subtle", root.dark) : "transparent"
-                Label {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.leftMargin: Theme.space["2.5"]
-                    text: "移动到分组"
-                    color: root.textMain
-                    font.pixelSize: Theme.fontSize.body
+                text: "移动到分组"
+                onTriggered: {
+                    var groups = []
+                    root.collectFolderTargets(root.collectionTree, groups, "")
+                    groups = groups.filter(function(group) {
+                        var sourcePath = root.currentContextPath()
+                        return group.path !== sourcePath && !root.isDescendantPath(sourcePath, group.path)
+                    })
+                    groups.unshift({ name: "根目录", path: "" })
+                    root.moveSourcePath = root.currentContextPath()
+                    root.moveSourceNodeId = root.contextNodeId
+                    root.moveGroupTargets = groups
+                    root.openMoveMenuBesideContext()
                 }
-                MouseArea {
-                    id: ctxMoveMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        var groups = []
-                        root.collectFolderTargets(root.collectionTree, groups, "")
-                        groups = groups.filter(function(group) {
-                            var sourcePath = root.currentContextPath()
-                            return group.path !== sourcePath && !root.isDescendantPath(sourcePath, group.path)
-                        })
-                        groups.unshift({ name: "根目录", path: "" })
-                        root.moveSourcePath = root.currentContextPath()
-                        root.moveSourceNodeId = root.contextNodeId
-                        root.moveGroupTargets = groups
-                        root.openMoveMenuBesideContext()
-                    }
+            }
+            UiMenuItem {
+                width: contextMenu.width - 8
+                dark: root.dark
+                visible: !!root.contextNode
+                itemEnabled: root.canMoveNodeByPath(root.currentContextPath(), -1)
+                text: "上移"
+                onTriggered: {
+                    root.moveNodeUpDown(root.currentContextPath(), -1)
+                    contextMenu.close()
                 }
+            }
+            UiMenuItem {
+                width: contextMenu.width - 8
+                dark: root.dark
+                visible: !!root.contextNode
+                itemEnabled: root.canMoveNodeByPath(root.currentContextPath(), 1)
+                text: "下移"
+                onTriggered: {
+                    root.moveNodeUpDown(root.currentContextPath(), 1)
+                    contextMenu.close()
+                }
+            }
+            UiMenuItem {
+                width: contextMenu.width - 8
+                dark: root.dark
+                visible: !!root.contextNode
+                text: "复制"
+                onTriggered: { root.duplicateNodeByPath(root.currentContextPath()); contextMenu.close() }
             }
 
-            Rectangle {
-                width: contextMenu.width
-                height: 34
+            UiMenuSeparator {
+                width: contextMenu.width - 8
+                dark: root.dark
                 visible: !!root.contextNode
-                opacity: root.canMoveNodeByPath(root.currentContextPath(), -1) ? 1 : 0.45
-                color: ctxUpMouse.containsMouse && root.canMoveNodeByPath(root.currentContextPath(), -1) ? Theme.token("color-bg-subtle", root.dark) : "transparent"
-                Label {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.leftMargin: Theme.space["2.5"]
-                    text: "上移"
-                    color: root.textMain
-                    font.pixelSize: Theme.fontSize.body
-                }
-                MouseArea {
-                    id: ctxUpMouse
-                    anchors.fill: parent
-                    enabled: root.canMoveNodeByPath(root.currentContextPath(), -1)
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        root.moveNodeUpDown(root.currentContextPath(), -1)
-                        contextMenu.close()
-                    }
-                }
             }
 
-            Rectangle {
-                width: contextMenu.width
-                height: 34
+            UiMenuItem {
+                width: contextMenu.width - 8
+                dark: root.dark
                 visible: !!root.contextNode
-                opacity: root.canMoveNodeByPath(root.currentContextPath(), 1) ? 1 : 0.45
-                color: ctxDownMouse.containsMouse && root.canMoveNodeByPath(root.currentContextPath(), 1) ? Theme.token("color-bg-subtle", root.dark) : "transparent"
-                Label {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.leftMargin: Theme.space["2.5"]
-                    text: "下移"
-                    color: root.textMain
-                    font.pixelSize: Theme.fontSize.body
-                }
-                MouseArea {
-                    id: ctxDownMouse
-                    anchors.fill: parent
-                    enabled: root.canMoveNodeByPath(root.currentContextPath(), 1)
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        root.moveNodeUpDown(root.currentContextPath(), 1)
-                        contextMenu.close()
-                    }
-                }
+                text: "重命名"
+                onTriggered: { root.beginInlineRenameById(root.contextNodeId); contextMenu.close() }
             }
-
-            Rectangle {
-                width: contextMenu.width
-                height: 34
+            UiMenuItem {
+                width: contextMenu.width - 8
+                dark: root.dark
                 visible: !!root.contextNode
-                color: ctxDuplicateMouse.containsMouse ? Theme.token("color-bg-subtle", root.dark) : "transparent"
-                Label {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.leftMargin: Theme.space["2.5"]
-                    text: "复制"
-                    color: root.textMain
-                    font.pixelSize: Theme.fontSize.body
-                }
-                MouseArea {
-                    id: ctxDuplicateMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        root.duplicateNodeByPath(root.currentContextPath())
-                        contextMenu.close()
-                    }
-                }
-            }
-
-            Rectangle {
-                width: contextMenu.width
-                height: 1
-                visible: !!root.contextNode
-                color: root.panelBorder
-            }
-
-            Rectangle {
-                width: contextMenu.width
-                height: 34
-                visible: !!root.contextNode
-                color: ctxRenameMouse.containsMouse ? Theme.token("color-bg-subtle", root.dark) : "transparent"
-                Label {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.leftMargin: Theme.space["2.5"]
-                    text: "重命名"
-                    color: root.textMain
-                    font.pixelSize: Theme.fontSize.body
-                }
-                MouseArea {
-                    id: ctxRenameMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        root.beginInlineRenameById(root.contextNodeId)
-                        contextMenu.close()
-                    }
-                }
-            }
-            Rectangle {
-                width: contextMenu.width
-                height: 34
-                visible: !!root.contextNode
-                color: ctxDeleteMouse.containsMouse ? Theme.token("color-bg-subtle", root.dark) : "transparent"
-                Label {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.leftMargin: Theme.space["2.5"]
-                    text: "删除"
-                    color: Theme.token("color-danger", root.dark)
-                    font.pixelSize: Theme.fontSize.body
-                }
-                MouseArea {
-                    id: ctxDeleteMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        root.deleteNodeByPath(root.currentContextPath())
-                        contextMenu.close()
-                    }
-                }
+                destructive: true
+                text: "删除"
+                onTriggered: { root.deleteNodeByPath(root.currentContextPath()); contextMenu.close() }
             }
         }
     }
@@ -1776,49 +1487,40 @@ Rectangle {
     Popup {
         id: moveMenu
         parent: Overlay.overlay
-        width: 180
-        height: Math.min(300, Math.max(1, root.moveGroupTargets.length) * 34)
-        padding: 0
+        width: 200
+        height: Math.min(300, Math.max(1, root.moveGroupTargets.length) * 28 + 8)
+        padding: 4
         modal: false
         focus: true
         property real _preferredX: 0
         property real _preferredY: 0
         closePolicy: Popup.CloseOnPressOutside | Popup.CloseOnEscape
-        background: UiPopupSurface {
+        enter: Transition {
+            ParallelAnimation {
+                NumberAnimation { property: "opacity"; from: 0.0; to: 1.0; duration: 80; easing.type: Easing.OutCubic }
+                NumberAnimation { property: "scale"; from: 0.98; to: 1.0; duration: 80; easing.type: Easing.OutCubic }
+            }
+        }
+        background: UiMenuSurface {
             dark: root.dark
-            radius: Theme.radii.md
-            fillColor: Theme.token("color-bg-surface", root.dark)
+            radius: 8
         }
         contentItem: Column {
             spacing: 0
             Repeater {
                 model: root.moveGroupTargets
-                delegate: Rectangle {
+                delegate: UiMenuItem {
                     required property var modelData
-                    width: moveMenu.width
-                    height: 34
-                    color: moveTargetMouse.containsMouse ? Theme.token("color-bg-subtle", root.dark) : "transparent"
-                    Label {
-                        anchors.verticalCenter: parent.verticalCenter
-                        anchors.left: parent.left
-                        anchors.leftMargin: Theme.space["2.5"]
-                        text: modelData.name || "未命名分组"
-                        color: root.textMain
-                        font.pixelSize: Theme.fontSize.body
-                    }
-                    MouseArea {
-                        id: moveTargetMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            if (root.moveSourceNodeId)
-                                root.moveNodeById(root.moveSourceNodeId, modelData.nodeId || "")
-                            else
-                                root.moveNodeByPath(root.moveSourcePath, modelData.path)
-                            moveMenu.close()
-                            contextMenu.close()
-                        }
+                    width: moveMenu.width - 8
+                    dark: root.dark
+                    text: modelData.name || "未命名分组"
+                    onTriggered: {
+                        if (root.moveSourceNodeId)
+                            root.moveNodeById(root.moveSourceNodeId, modelData.nodeId || "")
+                        else
+                            root.moveNodeByPath(root.moveSourcePath, modelData.path)
+                        moveMenu.close()
+                        contextMenu.close()
                     }
                 }
             }
