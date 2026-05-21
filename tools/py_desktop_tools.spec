@@ -117,10 +117,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=str(PROJECT_ROOT / "src" / "app" / "assets" / "icons" / "rocket.svg")
-    if sys.platform == "darwin"
-    and (PROJECT_ROOT / "src" / "app" / "assets" / "icons" / "rocket.svg").exists()
-    else None,
+    icon=None,
 )
 
 coll = COLLECT(
@@ -138,9 +135,7 @@ if sys.platform == "darwin":
     BUNDLE(
         coll,
         name="PyDesktopTools.app",
-        icon=str(PROJECT_ROOT / "src" / "app" / "assets" / "icons" / "rocket.svg")
-        if (PROJECT_ROOT / "src" / "app" / "assets" / "icons" / "rocket.svg").exists()
-        else None,
+        icon=None,
         bundle_identifier="com.py-desktop-tools.app",
         info_plist={
             "NSHighResolutionCapable": True,
