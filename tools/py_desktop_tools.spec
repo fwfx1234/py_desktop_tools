@@ -82,8 +82,6 @@ EXCLUDE_IMPORTS = [
 DATAS = qml_data + manifest_data + icon_data + web_assets
 
 # ── block cipher (optional) ──────────────────────────────────────────────────
-# Use a fixed key so reproducible builds are possible.
-# To generate a fresh key: pyinstaller --key $(python3 -c "import secrets; print(secrets.token_hex(16))")
 BLOCK_CIPHER_KEY = None
 
 a = Analysis(
@@ -101,14 +99,6 @@ a = Analysis(
 )
 
 pyz = PYZ(a.pure)
-
-# ── collect Qt QML deployment folder ─────────────────────────────────────────
-# PyInstaller hooks for PySide6-QML usually cover this, but we be explicit.
-# The ``--collect-all`` or ``--add-data`` approach via spec is fragile across
-# PySide6 versions.  Instead we rely on the ``pyside6`` hook that ships with
-# PyInstaller >= 6.x, which pulls in ``PySide6/qml/`` automatically.
-# If you see missing QML modules at runtime, verify with:
-#   find . -path '*/PySide6/qml/QtQuick*'  (inside the one-folder dist)
 
 exe = EXE(
     pyz,
@@ -142,3 +132,19 @@ coll = COLLECT(
     upx_exclude=[],
     name="PyDesktopTools",
 )
+
+# ── macOS: wrap in .app bundle ───────────────────────────────────────────────
+if sys.platform == "darwin":
+    BUNDLE(
+        coll,
+        name="PyDesktopTools.app",
+        icon=str(PROJECT_ROOT / "src" / "app" / "assets" / "icons" / "rocket.svg")
+        if (PROJECT_ROOT / "src" / "app" / "assets" / "icons" / "rocket.svg").exists()
+        else None,
+        bundle_identifier="com.py-desktop-tools.app",
+        info_plist={
+            "NSHighResolutionCapable": True,
+            "CFBundleShortVersionString": "1.0.0",
+            "CFBundleVersion": "1.0.0",
+        },
+    )
