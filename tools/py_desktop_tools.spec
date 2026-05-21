@@ -128,7 +128,8 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=str(PROJECT_ROOT / "src" / "app" / "assets" / "icons" / "rocket.svg")
-    if (PROJECT_ROOT / "src" / "app" / "assets" / "icons" / "rocket.svg").exists()
+    if sys.platform == "darwin"
+    and (PROJECT_ROOT / "src" / "app" / "assets" / "icons" / "rocket.svg").exists()
     else None,
 )
 
