@@ -85,7 +85,7 @@ Popup {
             width: root.width - 8
             dark: root.dark
             text: "全选"
-            itemEnabled: root.target && (root.target.length || (root.target.text || "").length) > 0
+            itemEnabled: root.target && ((root.target.length || 0) > 0 || (root.target.text || "").length > 0)
             onTriggered: { if (root.target) root.target.selectAll(); root.close() }
         }
     }

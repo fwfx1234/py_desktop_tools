@@ -310,7 +310,7 @@ Item {
 
         property int editingId: 0
 
-        contentItem: Flickable {
+        bodyItem: Flickable {
             contentWidth: width
             contentHeight: editForm.implicitHeight + 40
             clip: true
@@ -611,7 +611,7 @@ Item {
         property var paramNames: []
         property var values: ({})
 
-        contentItem: Item {
+        bodyItem: Item {
             ColumnLayout {
                 id: paramColumn
                 anchors.top: parent.top
@@ -674,7 +674,7 @@ Item {
         height: 480
         property var resultData: ({})
 
-        contentItem: Flickable {
+        bodyItem: Flickable {
             contentWidth: width
             contentHeight: resultColumn.implicitHeight + 40
             clip: true
@@ -725,7 +725,7 @@ Item {
                 }
 
                 Label {
-                    visible: resultSheet.resultData.message && resultSheet.resultData.message.length > 0
+                    visible: !!(resultSheet.resultData.message && resultSheet.resultData.message.length > 0)
                     text: resultSheet.resultData.message || ""
                     color: textMuted
                     font.family: sfFont
@@ -820,7 +820,7 @@ Item {
         property int actionId: 0
         property string targetName: ""
 
-        contentItem: ListView {
+        bodyItem: ListView {
             anchors.fill: parent
             anchors.margins: 12
             clip: true
@@ -919,7 +919,7 @@ Item {
         property int targetId: 0
         property string targetName: ""
 
-        contentItem: Item {
+        bodyItem: Item {
             Label {
                 anchors.fill: parent
                 anchors.margins: 24
@@ -1081,11 +1081,12 @@ Item {
     }
 
     component MacFormRow: RowLayout {
+        id: row
         property string label: ""
         Layout.fillWidth: true
         spacing: 10
         Label {
-            text: parent.label
+            text: row.label
             color: textMuted
             font.family: sfFont
             font.pixelSize: 12
@@ -1164,7 +1165,7 @@ Item {
         property string primaryText: "确定"
         property bool primaryDanger: false
         property bool showCancel: true
-        property Item contentItem
+        property Item bodyItem
         signal accepted()
         signal cancelled()
 
@@ -1194,12 +1195,12 @@ Item {
                 }
             }
 
-            // Slot for contentItem
+            // Slot for body content
             Item {
                 id: contentHolder
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                children: sheet.contentItem ? [sheet.contentItem] : []
+                children: sheet.bodyItem ? [sheet.bodyItem] : []
                 onChildrenChanged: {
                     for (var i = 0; i < children.length; ++i) {
                         children[i].anchors.fill = contentHolder

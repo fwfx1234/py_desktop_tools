@@ -40,6 +40,43 @@ Item {
     readonly property color tagBg: dark ? "#33394A" : "#E3E5EE"
     readonly property color tagText: dark ? "#C7CBD3" : "#4B4E55"
 
+    readonly property var sessionList: remoteFilesVm.sessions || []
+    readonly property var sftpSessionList: {
+        var out = []
+        var sessions = sessionList
+        for (var i = 0; i < sessions.length; i++) {
+            if ((sessions[i].protocol || "") === "sftp")
+                out.push(sessions[i])
+        }
+        return out
+    }
+    readonly property string activeProtocol: (remoteFilesVm.connectionState.protocol || "").toLowerCase()
+    readonly property string rightPaneMode: {
+        if (activeProtocol === "ftp" || activeProtocol === "ftps") return "ftp"
+        if (activeProtocol === "sftp") return "sftp"
+        return "empty"
+    }
+
+    function statusColorForId(profileId) {
+        var sessions = sessionList
+        for (var i = 0; i < sessions.length; i++) {
+            if (sessions[i].profileId !== profileId) continue
+            var status = sessions[i].status || ""
+            if (status === "connected") return success
+            if (status === "connecting") return warning
+            if (status === "error") return danger
+            return textFaint
+        }
+        return "transparent"
+    }
+    function sessionExists(profileId) {
+        var sessions = sessionList
+        for (var i = 0; i < sessions.length; i++) {
+            if (sessions[i].profileId === profileId) return true
+        }
+        return false
+    }
+
     function emptyProfile() {
         return {
             id: "",
@@ -186,10 +223,6 @@ Item {
     Connections {
         target: remoteFilesVm
         function onProfilesChanged() { root.ensureSelectedProfile() }
-        function onConnectionStateChanged() {
-            if (root.sftpConnected)
-                remoteFilesVm.openTerminal()
-        }
     }
 
     Rectangle {
@@ -276,9 +309,18 @@ Item {
                                     if (mouse.button === Qt.RightButton) {
                                         root.contextProfile = modelData
                                         root.openPopupAtMouse(profileMenu, profileMouse, mouse)
+                                        return
+                                    }
+                                    if (root.sessionExists(modelData.id))
+                                        remoteFilesVm.setActiveProfile(modelData.id || "")
+                                }
+                                onDoubleClicked: {
+                                    if (root.sessionExists(modelData.id || "")) {
+                                        remoteFilesVm.setActiveProfile(modelData.id || "")
+                                    } else {
+                                        remoteFilesVm.connectProfile(modelData.id || "")
                                     }
                                 }
-                                onDoubleClicked: remoteFilesVm.connectProfile(modelData.id || "")
                             }
 
                             RowLayout {
@@ -286,6 +328,14 @@ Item {
                                 anchors.leftMargin: 8
                                 anchors.rightMargin: 8
                                 spacing: 8
+
+                                Rectangle {
+                                    Layout.preferredWidth: 6
+                                    Layout.preferredHeight: 6
+                                    radius: 3
+                                    color: root.statusColorForId(modelData.id || "")
+                                    visible: root.sessionExists(modelData.id || "")
+                                }
 
                                 Rectangle {
                                     Layout.preferredWidth: 28
@@ -461,10 +511,41 @@ Item {
                         enabled: root.connected
                     }
 
-                    TerminalPane {
-                        id: terminalPane
+                    StackLayout {
+                        id: rightStack
                         SplitView.fillWidth: true
                         SplitView.minimumWidth: 280
+                        currentIndex: {
+                            if (root.rightPaneMode === "empty") return 0
+                            if (root.rightPaneMode === "ftp") return 1
+                            var activeId = remoteFilesVm.activeProfileId || ""
+                            for (var i = 0; i < root.sftpSessionList.length; i++) {
+                                if (root.sftpSessionList[i].profileId === activeId)
+                                    return 2 + i
+                            }
+                            return 0
+                        }
+
+                        Rectangle {
+                            color: dark ? "#101014" : "#FFFFFF"
+                            Label {
+                                anchors.centerIn: parent
+                                text: "未选中连接"
+                                color: textFaint
+                                font.pixelSize: 13
+                            }
+                        }
+
+                        FtpLogPane { id: ftpLogPane }
+
+                        Repeater {
+                            id: terminalRepeater
+                            model: root.sftpSessionList
+                            TerminalPane {
+                                required property var modelData
+                                bridge: remoteFilesVm.terminalBridgeForProfile(modelData.profileId || "")
+                            }
+                        }
                     }
                 }
 
@@ -745,6 +826,28 @@ Item {
                     profileMenu.close()
                 }
             }
+            UiMenuItem {
+                width: profileMenu.width - 8
+                dark: root.dark
+                text: "切换至此会话"
+                itemEnabled: root.contextProfile && root.sessionExists(root.contextProfile.id || "")
+                onTriggered: {
+                    if (root.contextProfile) remoteFilesVm.setActiveProfile(root.contextProfile.id || "")
+                    profileMenu.close()
+                }
+            }
+            UiMenuItem {
+                width: profileMenu.width - 8
+                dark: root.dark
+                text: "断开此连接"
+                destructive: true
+                itemEnabled: root.contextProfile && root.sessionExists(root.contextProfile.id || "")
+                onTriggered: {
+                    if (root.contextProfile) remoteFilesVm.disconnectProfile(root.contextProfile.id || "")
+                    profileMenu.close()
+                }
+            }
+            UiMenuSeparator { width: profileMenu.width - 8; dark: root.dark }
             UiMenuItem {
                 width: profileMenu.width - 8
                 dark: root.dark
@@ -1784,6 +1887,7 @@ Item {
 
     component TerminalPane: Rectangle {
         id: terminalPane
+        property var bridge: null
         color: dark ? "#101014" : "#FFFFFF"
 
         ColumnLayout {
@@ -1854,15 +1958,16 @@ Item {
                 signal output(string text)
                 signal closed(string message)
                 function sendInput(text) {
-                    remoteFilesVm.terminalBridge.sendInput(text)
+                    if (terminalPane.bridge) terminalPane.bridge.sendInput(text)
                 }
                 function resize(cols, rows) {
-                    remoteFilesVm.terminalBridge.resize(cols, rows)
+                    if (terminalPane.bridge) terminalPane.bridge.resize(cols, rows)
                 }
             }
 
             Connections {
-                target: remoteFilesVm.terminalBridge
+                target: terminalPane.bridge
+                ignoreUnknownSignals: true
                 function onOutput(text) { terminalProxy.output(text) }
                 function onClosed(message) { terminalProxy.closed(message) }
             }
@@ -1965,6 +2070,109 @@ Item {
                         text: "全选"
                         itemEnabled: (webContextMenu.editFlags & webContextMenu.flagCanSelectAll) !== 0
                         onTriggered: { terminalView.triggerWebAction(WebEngineView.SelectAll); webContextMenu.close() }
+                    }
+                }
+            }
+        }
+    }
+
+    component FtpLogPane: Rectangle {
+        id: ftpPane
+        color: dark ? "#0E1014" : "#0B0F19"
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 0
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 42
+                color: toolbarBg
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 14
+                    anchors.rightMargin: 12
+                    spacing: 10
+
+                    UiIcon {
+                        Layout.preferredWidth: 14
+                        Layout.preferredHeight: 14
+                        iconSize: 14
+                        name: "mdi6.text-box-outline"
+                        color: success
+                    }
+
+                    Label {
+                        text: "FTP 命令日志"
+                        color: textMain
+                        font.pixelSize: 12
+                        font.weight: Font.DemiBold
+                    }
+
+                    Label {
+                        text: (remoteFilesVm.ftpLog || []).length + " 条"
+                        color: textFaint
+                        font.pixelSize: 11
+                    }
+
+                    Item { Layout.fillWidth: true }
+
+                    PushButton {
+                        label: "清空"
+                        iconName: "mdi6.broom"
+                        enabled: (remoteFilesVm.ftpLog || []).length > 0
+                        onClicked: remoteFilesVm.clearFtpLog()
+                    }
+                }
+
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    height: 1
+                    color: separator
+                }
+            }
+
+            ScrollView {
+                id: ftpLogScroll
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                ScrollBar.horizontal.policy: ScrollBar.AsNeeded
+                ScrollBar.vertical.policy: ScrollBar.AsNeeded
+
+                ListView {
+                    id: ftpLogList
+                    width: ftpLogScroll.availableWidth
+                    spacing: 0
+                    model: remoteFilesVm.ftpLog || []
+                    interactive: true
+                    boundsBehavior: Flickable.StopAtBounds
+                    onCountChanged: positionViewAtEnd()
+                    delegate: Item {
+                        width: ftpLogList.width
+                        height: lineLabel.implicitHeight + 4
+                        Label {
+                            id: lineLabel
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.leftMargin: 14
+                            anchors.rightMargin: 14
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: modelData
+                            color: {
+                                var t = String(modelData || "")
+                                if (t.indexOf("*cmd*") >= 0) return "#7CB7FF"
+                                if (t.indexOf("*resp*") >= 0) return "#A5E3A1"
+                                return dark ? "#D6D8E1" : "#E0E3EA"
+                            }
+                            font.family: "SF Mono, Menlo, Consolas, monospace"
+                            font.pixelSize: 12
+                            wrapMode: Text.NoWrap
+                            elide: Text.ElideRight
+                        }
                     }
                 }
             }

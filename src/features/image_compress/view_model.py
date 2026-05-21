@@ -8,7 +8,7 @@ from .service import ImageCompressService, _normalize_path
 
 
 class ImageCompressViewModel(QObject):
-    resultsUpdated = Signal("QVariantList")
+    entriesUpdated = Signal("QVariantList")
     statusMessage = Signal(str, str)
     _uiCallback = Signal(object)
 
@@ -25,41 +25,61 @@ class ImageCompressViewModel(QObject):
         self._uiCallback.connect(self._run_ui_callback)
         self._platform = platform_api
         self._clipboard_service = clipboard_service
-        self._initial_files = list(initial_files or [])
+        if initial_files:
+            self._service.add_pending(initial_files, from_clipboard=False)
 
     @Slot(result=str)
     def outputDir(self) -> str:
         return str(self._service.output_dir)
 
     @Slot(result="QVariantList")
-    def initialFiles(self) -> list[str]:
-        return list(self._initial_files)
+    def currentEntries(self) -> list[dict]:
+        return [entry.to_dict() for entry in self._service.entries()]
 
-    @Slot("QVariantList", int, str)
-    def compressFiles(self, fileUrls, quality: int, mode: str) -> None:
+    @Slot()
+    def emitInitial(self) -> None:
+        self._publish_entries()
+
+    @Slot("QVariantList")
+    def addFiles(self, fileUrls) -> None:
         files = [_normalize_path(str(f)) for f in (fileUrls or []) if str(f)]
         if not files:
             self.statusMessage.emit("未选择任何图片", "error")
             return
-        self._runner.start(
-            lambda: self._service.compress(files, quality, mode, from_clipboard=False),
-            on_success=lambda entries: self._emit_results(entries, label="压缩完成"),
-            on_error=lambda exc: self._emit_failure(str(exc)),
-        )
+        self._service.add_pending(files, from_clipboard=False)
+        self._publish_entries()
+        self.statusMessage.emit(f"已加入 {len(files)} 张，点击「开始压缩」", "info")
 
-    @Slot(int, str)
-    def pasteAndCompress(self, quality: int, mode: str) -> None:
-        path, from_clipboard, error = self._read_clipboard_image_path()
+    @Slot()
+    def pasteClipboard(self) -> None:
+        path, from_clipboard, error = self._read_clipboard_image()
         if error:
             self.statusMessage.emit(error, "error")
             return
+        self._service.add_pending([path], from_clipboard=from_clipboard)
+        self._publish_entries()
+        if from_clipboard:
+            self.statusMessage.emit("已读取剪贴板图片，点击「开始压缩」", "info")
+        else:
+            self.statusMessage.emit("已加入剪贴板中的文件，点击「开始压缩」", "info")
+
+    @Slot(int, str)
+    def startCompression(self, quality: int, mode: str) -> None:
+        if not self._service.pending_ids():
+            self.statusMessage.emit("没有待压缩的图片", "error")
+            return
         self._runner.start(
-            lambda p=path, c=from_clipboard: self._service.compress([p], quality, mode, from_clipboard=c),
-            on_success=lambda entries: self._emit_results(
-                entries,
-                label="剪贴板图片已压缩" if from_clipboard else "压缩完成",
-            ),
-            on_error=lambda exc: self._emit_failure(str(exc)),
+            lambda: self._service.compress_pending(quality, mode),
+            on_success=lambda entries: self._emit_after_compress(entries),
+            on_error=lambda exc: self._post_status(f"压缩失败: {exc}", "error"),
+        )
+
+    @Slot(str, int, str)
+    def retryEntry(self, entryId: str, quality: int, mode: str) -> None:
+        self._runner.start(
+            lambda: self._service.retry(entryId, quality, mode),
+            on_success=lambda _entry: self._emit_after_compress(self._service.entries()),
+            on_error=lambda exc: self._post_status(f"重试失败: {exc}", "error"),
         )
 
     @Slot(str, str)
@@ -80,26 +100,25 @@ class ImageCompressViewModel(QObject):
         if entry is None or not entry.success or not entry.output:
             self.statusMessage.emit("无可复制内容", "error")
             return
+        copied = False
         if self._clipboard_service is not None and hasattr(self._clipboard_service, "copy_item"):
             try:
-                ok = bool(self._clipboard_service.copy_item({
+                copied = bool(self._clipboard_service.copy_item({
                     "itemType": "image",
                     "content": entry.output,
                 }))
             except Exception:
-                ok = False
-            if ok:
-                self.statusMessage.emit("已复制压缩图片到剪贴板", "success")
-                return
-        if self._platform is not None:
+                copied = False
+        if not copied and self._platform is not None:
             try:
                 result = self._platform.clipboard.write_files([entry.output])
             except Exception:
                 result = None
-            if result is not None and bool(getattr(result, "success", False)):
-                self.statusMessage.emit("已复制压缩图片到剪贴板", "success")
-                return
-        self.statusMessage.emit("当前平台不支持图片写入剪贴板", "error")
+            copied = bool(result and getattr(result, "success", False))
+        if copied:
+            self.statusMessage.emit("已复制压缩图片到剪贴板", "success")
+        else:
+            self.statusMessage.emit("当前平台不支持图片写入剪贴板", "error")
 
     @Slot(str)
     def revealOutput(self, entryId: str) -> None:
@@ -113,17 +132,17 @@ class ImageCompressViewModel(QObject):
         result = self._platform.reveal_in_file_manager(entry.output)
         ok = bool(getattr(result, "success", False))
         self.statusMessage.emit(
-            getattr(result, "message", "") or entry.output if not ok else f"已定位 {entry.output}",
+            f"已定位 {entry.output}" if ok else (getattr(result, "message", "") or entry.output),
             "success" if ok else "error",
         )
 
     @Slot(str)
-    def removeResult(self, entryId: str) -> None:
+    def removeEntry(self, entryId: str) -> None:
         self._service.remove(entryId)
         self._publish_entries()
 
     @Slot()
-    def clearResults(self) -> None:
+    def clearAll(self) -> None:
         self._service.clear()
         self._publish_entries()
 
@@ -131,27 +150,34 @@ class ImageCompressViewModel(QObject):
         self._disposed = True
         self._runner.shutdown(wait=False)
 
-    def _read_clipboard_image_path(self) -> tuple[str, bool, str]:
+    def _read_clipboard_image(self) -> tuple[str, bool, str]:
         """Return (path, from_clipboard, error).
 
-        from_clipboard=True means the image came from in-memory clipboard
-        without a user-owned source file (overwrite-original must be blocked).
-        from_clipboard=False means the clipboard pointed at a real file on
-        disk (e.g. user copied a file from Finder); overwrite is allowed.
+        ``from_clipboard=True`` 表示截图等无源图片（必须禁用「覆盖原图」）;
+        ``from_clipboard=False`` 表示剪贴板里是真实文件路径（允许覆盖原图）。
         """
         service = self._clipboard_service
         if service is None:
             return "", False, "剪贴板服务不可用"
         item = None
-        for attr in ("latest_context_item", "latest_captured_item", "latest_item"):
-            getter = getattr(service, attr, None)
-            if callable(getter):
-                try:
-                    item = getter()
-                except Exception:
-                    item = None
-                if item:
-                    break
+        # 1) 优先读取实时 pasteboard，避免监听器还没来得及捕获
+        live_getter = getattr(service, "read_live_item", None)
+        if callable(live_getter):
+            try:
+                item = live_getter()
+            except Exception:
+                item = None
+        # 2) fallback：历史记录里最近一条
+        if not item:
+            for attr in ("latest_context_item", "latest_captured_item", "latest_item"):
+                getter = getattr(service, attr, None)
+                if callable(getter):
+                    try:
+                        item = getter()
+                    except Exception:
+                        item = None
+                    if item:
+                        break
         if not isinstance(item, dict):
             return "", False, "剪贴板中没有图片，请先复制一张图片"
         item_type = str(item.get("itemType") or "")
@@ -170,25 +196,24 @@ class ImageCompressViewModel(QObject):
                 content = str(item.get("content") or "")
                 candidates = [p.strip() for p in content.split(",") if p.strip()]
             for candidate in candidates:
-                lowered = candidate.lower()
-                if lowered.endswith((".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif")):
+                if candidate.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif")):
                     return candidate, False, ""
             return "", False, "剪贴板中没有图片，请先复制一张图片"
         return "", False, "剪贴板中没有图片，请先复制一张图片"
 
-    def _emit_results(self, entries, *, label: str) -> None:
-        success = sum(1 for e in entries if e.success)
-        failed = sum(1 for e in entries if not e.success)
-        message = f"{label}：成功 {success} / 失败 {failed}"
+    def _emit_after_compress(self, entries) -> None:
+        success = sum(1 for e in entries if e.state == "success")
+        failed = sum(1 for e in entries if e.state == "failed")
+        message = f"压缩完成：成功 {success} / 失败 {failed}"
         self._post_ui(lambda: self._publish_entries())
         self._post_ui(lambda: self._emit_status_in_ui(message, "success" if failed == 0 else "error"))
 
-    def _emit_failure(self, error: str) -> None:
-        self._post_ui(lambda: self._emit_status_in_ui(f"压缩失败: {error}", "error"))
+    def _post_status(self, message: str, kind: str) -> None:
+        self._post_ui(lambda m=message, k=kind: self._emit_status_in_ui(m, k))
 
     def _publish_entries(self) -> None:
         payload = [entry.to_dict() for entry in self._service.entries()]
-        self._post_ui(lambda data=payload: self._emit_results_in_ui(data))
+        self._post_ui(lambda data=payload: self._emit_entries_in_ui(data))
 
     def _post_ui(self, fn) -> None:
         self._uiCallback.emit(fn)
@@ -198,9 +223,9 @@ class ImageCompressViewModel(QObject):
         if not self._disposed and callable(fn):
             fn()
 
-    def _emit_results_in_ui(self, entries) -> None:
+    def _emit_entries_in_ui(self, entries) -> None:
         if not self._disposed:
-            self.resultsUpdated.emit(entries)
+            self.entriesUpdated.emit(entries)
 
     def _emit_status_in_ui(self, message: str, kind: str) -> None:
         if not self._disposed:

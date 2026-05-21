@@ -64,6 +64,9 @@ class RemoteTerminalBridge(QObject):
         with self._cwd_lock:
             return self._cwd
 
+    def is_attached(self) -> bool:
+        return self._channel is not None and not self._closed.is_set()
+
     @Property(str, notify=workingDirChanged)
     def workingDir(self) -> str:  # noqa: N802 - Qt naming
         return self.current_working_dir()

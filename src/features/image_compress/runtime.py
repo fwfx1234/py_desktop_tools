@@ -38,7 +38,7 @@ class ImageCompressSession(QmlPluginSession):
     def on_input_changed(self, text: str) -> list[dict]:
         files = _image_files_from_input(text)
         if files:
-            self._image_view_model.setFiles(files)
+            self._image_view_model.addFiles(files)
         return []
 
 

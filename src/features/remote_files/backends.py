@@ -288,13 +288,44 @@ class FtpBackend:
         self._ftps_factory = ftps_factory
         self._ftp = None
         self._lock = RLock()
+        self._log_sink = None
+
+    def set_log_sink(self, sink) -> None:
+        """Register a ``callable(str)`` that receives every FTP debug line.
+
+        Lines look like ``*cmd* CWD /foo`` or ``*resp* 250 OK``. The
+        ``ftplib.FTP.sanitize`` helper already masks passwords. Set before
+        ``connect()`` so login traffic is captured too.
+        """
+
+        self._log_sink = sink
 
     def connect(self) -> None:
         import ftplib
 
         with self._lock:
-            factory = self._ftps_factory if self.profile.protocol == "ftps" else self._ftp_factory
-            factory = factory or (ftplib.FTP_TLS if self.profile.protocol == "ftps" else ftplib.FTP)
+            sink = self._log_sink
+
+            class _LoggingFTP(ftplib.FTP):
+                def _print_debug(self, *args):
+                    if sink is not None:
+                        try:
+                            sink(" ".join(str(a) for a in args))
+                        except Exception:
+                            pass
+
+            class _LoggingFTPTLS(ftplib.FTP_TLS):
+                def _print_debug(self, *args):
+                    if sink is not None:
+                        try:
+                            sink(" ".join(str(a) for a in args))
+                        except Exception:
+                            pass
+
+            if self.profile.protocol == "ftps":
+                factory = self._ftps_factory or _LoggingFTPTLS
+            else:
+                factory = self._ftp_factory or _LoggingFTP
             _logger().info(
                 "remote_files.ftp.connect_start",
                 "开始连接 FTP/FTPS 服务器",
@@ -304,6 +335,8 @@ class FtpBackend:
                 username=self.profile.username,
             )
             self._ftp = factory()
+            if sink is not None and hasattr(self._ftp, "set_debuglevel"):
+                self._ftp.set_debuglevel(1)
             if self.profile.encoding:
                 self._ftp.encoding = self.profile.encoding
             self._ftp.connect(self.profile.host, self.profile.port, timeout=self.profile.connect_timeout)

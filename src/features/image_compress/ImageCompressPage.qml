@@ -7,10 +7,11 @@ import "../../app/theme"
 
 Item {
     id: root
-    property var resultRows: []
+    property var entries: []
+    property int pendingCount: 0
     property int quality: 80
     property string mode: "visual"
-    property string statusText: "粘贴或拖入图片即可开始"
+    property string statusText: "复制一张图片后点击「粘贴剪贴板」"
     property color statusColor: textMuted
     property string pendingSaveAsId: ""
 
@@ -22,15 +23,25 @@ Item {
     readonly property color textMain: Theme.token("color-text-primary", dark)
     readonly property color textMuted: Theme.token("color-text-regular", dark)
     readonly property color textSubtle: Theme.token("color-text-secondary", dark)
+    readonly property color accent: Theme.token("color-primary-active", dark)
     readonly property color successColor: Theme.token("color-success", dark)
     readonly property color dangerColor: Theme.token("color-danger", dark)
-    readonly property color accent: Theme.token("color-primary-active", dark)
+    readonly property color infoColor: Theme.token("color-info", dark)
+    readonly property color warnColor: Theme.token("color-warning", dark)
 
     function setStatus(text, kind) {
         statusText = text
         if (kind === "success") statusColor = successColor
         else if (kind === "error") statusColor = dangerColor
+        else if (kind === "info") statusColor = infoColor
         else statusColor = textMuted
+    }
+
+    function refreshCounters() {
+        var p = 0
+        for (var i = 0; i < entries.length; i++)
+            if ((entries[i].state || "") === "pending") p++
+        pendingCount = p
     }
 
     function formatBytes(n) {
@@ -40,25 +51,26 @@ Item {
         return (n / 1024 / 1024).toFixed(2) + " MB"
     }
 
-    function pathBaseName(p) {
+    function pathBase(p) {
         if (!p) return ""
         var idx = p.lastIndexOf("/")
         return idx >= 0 ? p.substring(idx + 1) : p
     }
 
-    function compressInitial(files) {
-        if (files && files.length > 0)
-            imageCompressVm.compressFiles(files, quality, mode)
+    function stateLabel(s) {
+        if (s === "success") return "✓ 已压缩"
+        if (s === "failed") return "失败"
+        return "待压缩"
     }
 
-    Component.onCompleted: compressInitial(imageCompressVm.initialFiles())
+    Component.onCompleted: imageCompressVm.emitInitial()
 
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: Theme.space["3"]
         spacing: Theme.space["2"]
 
-        // 顶部工具栏：模式 + 质量
+        // 顶部：标题 + 模式 + 质量
         RowLayout {
             Layout.fillWidth: true
             spacing: Theme.space["2"]
@@ -103,10 +115,10 @@ Item {
             }
         }
 
-        // 主输入区
+        // 操作栏
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 88
+            Layout.preferredHeight: 70
             color: dropArea.containsDrag ? Theme.token("color-primary-bg", root.dark) : subtleBg
             radius: Theme.radii.lg
             border.color: dropArea.containsDrag ? accent : panelBorder
@@ -114,34 +126,44 @@ Item {
 
             RowLayout {
                 anchors.fill: parent
-                anchors.margins: Theme.space["3"]
-                spacing: Theme.space["3"]
+                anchors.margins: Theme.space["2.5"]
+                spacing: Theme.space["2"]
 
                 UiButton {
-                    text: "粘贴并压缩"
+                    text: "粘贴剪贴板"
                     dark: root.dark
-                    variant: "primary"
-                    implicitWidth: 116
-                    onClicked: imageCompressVm.pasteAndCompress(quality, mode)
+                    variant: "secondary"
+                    implicitWidth: 108
+                    onClicked: imageCompressVm.pasteClipboard()
                 }
                 UiButton {
                     text: "选择图片"
                     dark: root.dark
-                    variant: "secondary"
-                    onClicked: picker.open()
-                }
-                UiButton {
-                    text: "清空结果"
-                    dark: root.dark
                     variant: "ghost"
-                    enabled: resultRows.length > 0
-                    onClicked: imageCompressVm.clearResults()
+                    onClicked: picker.open()
                 }
                 Item { Layout.fillWidth: true }
                 Label {
-                    text: "或将图片拖到此处"
-                    color: textSubtle
-                    horizontalAlignment: Text.AlignRight
+                    text: pendingCount > 0
+                        ? ("待压缩 " + pendingCount + " 张")
+                        : "或将图片拖到此处"
+                    color: pendingCount > 0 ? warnColor : textSubtle
+                    font.pixelSize: Theme.fontSize.caption
+                }
+                UiButton {
+                    text: "开始压缩"
+                    dark: root.dark
+                    variant: "primary"
+                    enabled: pendingCount > 0
+                    implicitWidth: 96
+                    onClicked: imageCompressVm.startCompression(quality, mode)
+                }
+                UiButton {
+                    text: "清空"
+                    dark: root.dark
+                    variant: "ghost"
+                    enabled: entries.length > 0
+                    onClicked: imageCompressVm.clearAll()
                 }
             }
 
@@ -152,14 +174,14 @@ Item {
                     if (drop.urls && drop.urls.length > 0) {
                         var arr = []
                         for (var i = 0; i < drop.urls.length; i++) arr.push(String(drop.urls[i]))
-                        imageCompressVm.compressFiles(arr, quality, mode)
+                        imageCompressVm.addFiles(arr)
                         drop.acceptProposedAction()
                     }
                 }
             }
         }
 
-        // 结果列表
+        // 列表（待压缩 + 已压缩 + 失败 同列）
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -170,8 +192,8 @@ Item {
 
             Label {
                 anchors.centerIn: parent
-                visible: resultRows.length === 0
-                text: "暂无结果\n复制一张图片后点击「粘贴并压缩」即可"
+                visible: entries.length === 0
+                text: "暂无图片\n复制一张图片后点击「粘贴剪贴板」加入待压缩列表"
                 color: textSubtle
                 horizontalAlignment: Text.AlignHCenter
                 font.pixelSize: Theme.fontSize.caption
@@ -180,17 +202,17 @@ Item {
             ListView {
                 anchors.fill: parent
                 anchors.margins: 4
-                visible: resultRows.length > 0
+                visible: entries.length > 0
                 clip: true
-                model: resultRows
+                model: entries
                 spacing: 4
                 delegate: Rectangle {
                     width: ListView.view.width
-                    height: 64
+                    height: 68
                     color: index % 2 === 0 ? panelBg : subtleBg
                     radius: Theme.radii.sm
-                    border.color: modelData.success ? "transparent" : Theme.token("color-warning", root.dark)
-                    border.width: modelData.success ? 0 : 1
+                    border.color: modelData.state === "failed" ? warnColor : "transparent"
+                    border.width: modelData.state === "failed" ? 1 : 0
 
                     RowLayout {
                         anchors.fill: parent
@@ -198,10 +220,10 @@ Item {
                         anchors.rightMargin: Theme.space["2"]
                         spacing: Theme.space["2"]
 
-                        // 缩略图
+                        // 缩略图（成功时显示压缩后的，否则尝试源文件）
                         Rectangle {
-                            Layout.preferredWidth: 56
-                            Layout.preferredHeight: 56
+                            Layout.preferredWidth: 58
+                            Layout.preferredHeight: 58
                             color: subtleBg
                             radius: Theme.radii.sm
                             border.color: panelBorder
@@ -209,7 +231,9 @@ Item {
                             Image {
                                 anchors.fill: parent
                                 anchors.margins: 2
-                                source: modelData.success && modelData.output ? ("file://" + modelData.output) : ""
+                                source: modelData.state === "success" && modelData.output
+                                    ? ("file://" + modelData.output + "?t=" + index)
+                                    : (modelData.source ? ("file://" + modelData.source) : "")
                                 fillMode: Image.PreserveAspectFit
                                 asynchronous: true
                                 cache: false
@@ -223,7 +247,7 @@ Item {
                                 Layout.fillWidth: true
                                 spacing: Theme.space["1"]
                                 Label {
-                                    text: modelData.fileName || pathBaseName(modelData.source) || "(剪贴板)"
+                                    text: modelData.fileName || pathBase(modelData.source) || "(未命名)"
                                     color: textMain
                                     elide: Text.ElideMiddle
                                     Layout.fillWidth: true
@@ -240,15 +264,17 @@ Item {
                                 Layout.fillWidth: true
                                 spacing: Theme.space["1"]
                                 Label {
-                                    text: modelData.success
+                                    text: modelData.state === "success"
                                         ? formatBytes(modelData.originalBytes) + " → " + formatBytes(modelData.compressedBytes)
-                                        : (modelData.error || "失败")
-                                    color: modelData.success ? textSubtle : dangerColor
+                                        : (modelData.state === "failed"
+                                            ? (modelData.error || "失败")
+                                            : formatBytes(modelData.originalBytes))
+                                    color: modelData.state === "failed" ? dangerColor : textSubtle
                                     font.family: Theme.fontFamily.mono
                                     font.pixelSize: Theme.fontSize.caption
                                 }
                                 Label {
-                                    visible: modelData.success
+                                    visible: modelData.state === "success"
                                     text: modelData.savedRatio.toFixed(1) + "%"
                                     color: modelData.savedRatio > 0 ? successColor : textSubtle
                                     font.family: Theme.fontFamily.mono
@@ -256,39 +282,56 @@ Item {
                                     Layout.preferredWidth: 56
                                     horizontalAlignment: Text.AlignRight
                                 }
+                                Item { Layout.fillWidth: true }
+                                Label {
+                                    text: stateLabel(modelData.state)
+                                    color: modelData.state === "success" ? successColor
+                                         : modelData.state === "failed" ? dangerColor
+                                         : warnColor
+                                    font.pixelSize: Theme.fontSize.caption
+                                }
                             }
                         }
 
+                        // 操作按钮
                         UiButton {
+                            visible: modelData.state === "success"
                             text: "复制"
                             dark: root.dark
                             variant: "ghost"
-                            implicitWidth: 56
-                            enabled: modelData.success
+                            implicitWidth: 52
                             onClicked: imageCompressVm.copyResultToClipboard(modelData.id)
                         }
                         UiButton {
+                            visible: modelData.state === "success" && !modelData.fromClipboard && modelData.source
                             text: "覆盖原图"
                             dark: root.dark
                             variant: "ghost"
-                            implicitWidth: 78
-                            visible: modelData.success && !modelData.fromClipboard && modelData.source
+                            implicitWidth: 76
                             onClicked: imageCompressVm.overwriteOriginal(modelData.id)
                         }
                         UiButton {
+                            visible: modelData.state === "success"
                             text: "另存为"
                             dark: root.dark
                             variant: "ghost"
-                            implicitWidth: 66
-                            enabled: modelData.success
+                            implicitWidth: 64
                             onClicked: { pendingSaveAsId = modelData.id; saveAsDialog.open() }
+                        }
+                        UiButton {
+                            visible: modelData.state === "failed"
+                            text: "重试"
+                            dark: root.dark
+                            variant: "ghost"
+                            implicitWidth: 52
+                            onClicked: imageCompressVm.retryEntry(modelData.id, quality, mode)
                         }
                         UiButton {
                             text: "移除"
                             dark: root.dark
                             variant: "ghost"
-                            implicitWidth: 56
-                            onClicked: imageCompressVm.removeResult(modelData.id)
+                            implicitWidth: 52
+                            onClicked: imageCompressVm.removeEntry(modelData.id)
                         }
                     }
                 }
@@ -298,7 +341,7 @@ Item {
         // 状态栏
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: Theme.space["3"] * 2 + Theme.space["1"]
+            Layout.preferredHeight: 26
             color: statusBg
             radius: Theme.radii.sm
             RowLayout {
@@ -314,7 +357,7 @@ Item {
                     Layout.fillWidth: true
                 }
                 Label {
-                    text: "共 " + resultRows.length + " 条结果"
+                    text: "共 " + entries.length + " 条"
                     color: textSubtle
                     font.pixelSize: Theme.fontSize.caption
                     font.family: Theme.fontFamily.mono
@@ -332,7 +375,7 @@ Item {
             var arr = []
             for (var i = 0; i < picker.selectedFiles.length; i++)
                 arr.push(String(picker.selectedFiles[i]))
-            imageCompressVm.compressFiles(arr, quality, mode)
+            imageCompressVm.addFiles(arr)
         }
     }
 
@@ -350,7 +393,10 @@ Item {
 
     Connections {
         target: imageCompressVm
-        function onResultsUpdated(rows) { resultRows = rows || [] }
+        function onEntriesUpdated(items) {
+            entries = items || []
+            refreshCounters()
+        }
         function onStatusMessage(message, kind) { setStatus(message, kind) }
     }
 }

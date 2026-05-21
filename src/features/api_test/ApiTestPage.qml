@@ -155,6 +155,9 @@ Item {
         root.applyingTabToActionBar = true
         requestActionBar.setMethodText(tab.method || "GET")
         requestActionBar.setPathText(tab.url || "/")
+        var savedTab = parseInt(tab.activeRequestTab || 0, 10)
+        if (!isNaN(savedTab) && savedTab >= 0)
+            root.currentTab = savedTab
         root.applyingTabToActionBar = false
     }
     function updateCurrentTreeEndpoint(methodText, pathText) {
@@ -383,7 +386,11 @@ Item {
                         showMagicPanel: root.showMagicPanel
                         currentMethod: requestActionBar.getMethodText()
                         methodColorFn: root.methodColor
-                        onTabSelected: function(index) { root.currentTab = index }
+                        onTabSelected: function(index) {
+                            root.currentTab = index
+                            if (apiTestVm && !root.applyingTabToActionBar)
+                                apiTestVm.updateCurrentTabActiveRequestTab(index)
+                        }
                         onFileBrowseClicked: fileDialog.open()
                         onSaveAsCaseClicked: saveCurrentAsDebugCase()
                         onBatchRunClicked: {

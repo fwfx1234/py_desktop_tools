@@ -2,48 +2,66 @@ from __future__ import annotations
 
 from threading import Lock
 
-from .backends import RemoteBackend, create_backend
-from .models import RemoteProfile
+from .session import RemoteSession
 
 
 class RemoteConnectionPool:
+    """Registry of live remote sessions, keyed by profile id.
+
+    Replaces the previous single-slot pool. Opening a new session never
+    closes an existing one; callers must explicitly close per profile id.
+    """
+
     def __init__(self) -> None:
-        self._backend: RemoteBackend | None = None
-        self._profile: RemoteProfile | None = None
+        self._sessions: dict[str, RemoteSession] = {}
         self._lock = Lock()
 
-    @property
-    def profile(self) -> RemoteProfile | None:
+    def add(self, session: RemoteSession) -> None:
         with self._lock:
-            return self._profile
+            existing = self._sessions.get(session.profile_id)
+            self._sessions[session.profile_id] = session
+        if existing is not None and existing is not session:
+            try:
+                existing.close()
+            except Exception:
+                pass
 
-    @property
-    def backend(self) -> RemoteBackend | None:
+    def get(self, profile_id: str) -> RemoteSession | None:
         with self._lock:
-            return self._backend
+            return self._sessions.get(profile_id)
 
-    def connect(self, profile: RemoteProfile) -> RemoteBackend:
-        backend = create_backend(profile)
-        backend.connect()
-        with self._lock:
-            old = self._backend
-            self._backend = backend
-            self._profile = profile
-        if old is not None:
-            old.close()
-        return backend
+    def require(self, profile_id: str) -> RemoteSession:
+        session = self.get(profile_id)
+        if session is None:
+            raise RuntimeError("会话不存在或未连接")
+        return session
 
-    def require_backend(self) -> RemoteBackend:
+    def has(self, profile_id: str) -> bool:
         with self._lock:
-            backend = self._backend
-        if backend is None:
-            raise RuntimeError("尚未连接远程服务器")
-        return backend
+            return profile_id in self._sessions
 
-    def close(self) -> None:
+    def list_sessions(self) -> list[RemoteSession]:
         with self._lock:
-            backend = self._backend
-            self._backend = None
-            self._profile = None
-        if backend is not None:
-            backend.close()
+            return list(self._sessions.values())
+
+    def remove(self, profile_id: str) -> RemoteSession | None:
+        with self._lock:
+            return self._sessions.pop(profile_id, None)
+
+    def close_session(self, profile_id: str) -> None:
+        session = self.remove(profile_id)
+        if session is not None:
+            try:
+                session.close()
+            except Exception:
+                pass
+
+    def close_all(self) -> None:
+        with self._lock:
+            sessions = list(self._sessions.values())
+            self._sessions.clear()
+        for session in sessions:
+            try:
+                session.close()
+            except Exception:
+                pass
