@@ -6,7 +6,11 @@ import sys
 from pathlib import Path
 
 # ── paths ────────────────────────────────────────────────────────────────────
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+try:
+    _SPEC_DIR = Path(__file__).resolve().parent
+except NameError:
+    _SPEC_DIR = Path.cwd()
+PROJECT_ROOT = _SPEC_DIR.parent
 SRC = PROJECT_ROOT / "src"
 
 # ── collect QML / plugin.json / asset trees ──────────────────────────────────
