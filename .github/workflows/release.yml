@@ -52,7 +52,7 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           mkdir -p release
-          ditto -c -k --sequesterRsrc --keepParent dist/PyDesktopTools.app "release/PyDesktopTools-${GITHUB_REF_NAME}-macos.zip"
+          ditto -c -k --sequesterRsrc --keepParent dist/Suishou.app "release/Suishou-${GITHUB_REF_NAME}-macos.zip"
 
       - name: Build Windows app
         if: runner.os == 'Windows'
@@ -64,7 +64,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force release | Out-Null
-          Compress-Archive -Path dist\PyDesktopTools -DestinationPath "release\PyDesktopTools-${env:GITHUB_REF_NAME}-windows.zip" -Force
+          Compress-Archive -Path dist\Suishou -DestinationPath "release\Suishou-${env:GITHUB_REF_NAME}-windows.zip" -Force
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
