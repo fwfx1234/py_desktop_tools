@@ -26,6 +26,8 @@ qml_data = _walk_rel(SRC, "*.qml", "*.js")
 # Plugin manifests
 manifest_data = _walk_rel(SRC, "plugin.json", "*.plugin.json")
 
+plugin_python_data = _walk_rel(SRC / "features", "*.py")
+
 # SVG icons
 icon_data = _walk_rel(SRC, "*.svg")
 
@@ -79,13 +81,13 @@ EXCLUDE_IMPORTS = [
 ]
 
 # ── datas ────────────────────────────────────────────────────────────────────
-DATAS = qml_data + manifest_data + icon_data + web_assets
+DATAS = qml_data + manifest_data + plugin_python_data + icon_data + web_assets
 
 # ── block cipher (optional) ──────────────────────────────────────────────────
 BLOCK_CIPHER_KEY = None
 
 a = Analysis(
-    [str(SRC / "app" / "main.py")],
+    [str(PROJECT_ROOT / "tools" / "pyinstaller_bootstrap.py")],
     pathex=[str(SRC)],
     binaries=[],
     datas=DATAS,
