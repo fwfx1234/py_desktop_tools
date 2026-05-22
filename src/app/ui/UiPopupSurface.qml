@@ -15,10 +15,11 @@ Item {
         anchors.fill: surface
         source: surface
         shadowEnabled: true
-        shadowBlur: 0.7
-        shadowOpacity: 0.3
+        shadowBlur: 0.78
+        shadowOpacity: root.dark ? 0.30 : 0.18
         shadowHorizontalOffset: 0
-        shadowVerticalOffset: 2
+        shadowVerticalOffset: 8
+        shadowColor: "#000000"
     }
 
     Rectangle {

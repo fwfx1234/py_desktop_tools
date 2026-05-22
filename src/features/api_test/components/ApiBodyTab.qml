@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -114,25 +116,26 @@ Item {
                     Repeater {
                         model: root.bodyModes
                         delegate: Rectangle {
+                            id: bodyModeDelegate
                             required property int index
                             required property var modelData
                             radius: 10
                             height: 24
                             width: modeLabel.implicitWidth + 16
-                            color: index === root.currentBodyMode
+                            color: bodyModeDelegate.index === root.currentBodyMode
                                 ? Theme.token("color-primary-active", root.dark)
                                 : "transparent"
                             Label {
                                 id: modeLabel
                                 anchors.centerIn: parent
-                                text: modelData
-                                color: index === root.currentBodyMode ? "white" : root.textMuted
+                                text: bodyModeDelegate.modelData
+                                color: bodyModeDelegate.index === root.currentBodyMode ? "white" : root.textMuted
                                 font.pixelSize: Theme.fontSize.caption
                             }
                             MouseArea {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: root.bodyModeClicked(index)
+                                onClicked: root.bodyModeClicked(bodyModeDelegate.index)
                             }
                         }
                     }
@@ -308,8 +311,8 @@ Item {
                 anchors.top: parent.top
                 anchors.right: parent.right
                 anchors.rightMargin: Theme.space["2.5"]
-                width: 320
-                height: 420
+                width: Math.min(352, parent.width - Theme.space["5"])
+                height: Math.min(386, parent.height - Theme.space["5"])
                 z: 20
                 dark: root.dark
                 panelBg: root.panelBg

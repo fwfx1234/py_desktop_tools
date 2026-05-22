@@ -20,6 +20,10 @@ Rectangle {
         magicPopup.close()
     }
 
+    function openPanel() {
+        magicPopup.openAt(root, root.width - magicPopup.width, root.height + 6)
+    }
+
     Layout.preferredWidth: 28
     Layout.preferredHeight: 28
     implicitWidth: 28
@@ -50,7 +54,7 @@ Rectangle {
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onClicked: magicPopup.opened ? magicPopup.close() : magicPopup.open()
+        onClicked: magicPopup.opened ? magicPopup.close() : root.openPanel()
     }
 
     ToolTip.visible: hit.containsMouse
@@ -59,9 +63,6 @@ Rectangle {
 
     UiPopup {
         id: magicPopup
-        parent: root
-        x: root.width - width
-        y: root.height + 6
         width: 352
         height: 386
         padding: 0

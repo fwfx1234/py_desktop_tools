@@ -170,49 +170,6 @@ Rectangle {
             implicitWidth: 84
             implicitHeight: 30
             onClicked: root.sendClicked()
-            contentItem: Row {
-                spacing: 6
-                anchors.centerIn: parent
-                width: implicitWidth
-                height: parent.height
-
-                Rectangle {
-                    visible: root.sending
-                    width: 12
-                    height: 12
-                    radius: 6
-                    anchors.verticalCenter: parent.verticalCenter
-                    color: "transparent"
-                    border.width: 2
-                    border.color: Theme.token("color-bg-surface", false)
-                    opacity: 0.9
-
-                    Rectangle {
-                        width: 5
-                        height: 5
-                        radius: 2.5
-                        color: Theme.token("color-bg-surface", false)
-                        anchors.top: parent.top
-                        anchors.horizontalCenter: parent.horizontalCenter
-                    }
-
-                    RotationAnimator on rotation {
-                        running: root.sending
-                        loops: Animation.Infinite
-                        from: 0
-                        to: 360
-                        duration: 800
-                    }
-                }
-
-                Text {
-                    text: root.sending ? "发送中" : "发送"
-                    anchors.verticalCenter: parent.verticalCenter
-                    color: Theme.token("color-bg-surface", false)
-                    font.pixelSize: Theme.fontSize.body
-                    font.family: Theme.fontFamily.ui
-                }
-            }
         }
     }
 }

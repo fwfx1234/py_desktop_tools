@@ -871,21 +871,16 @@ Rectangle {
                     }
                 }
             }
-            UiButton {
+            UiIconButton {
                 id: addButton
-                text: ""
                 dark: root.dark
-                variant: "secondary"
-                implicitWidth: 28
+                controlSize: 28
+                iconSize: 14
+                iconName: "mdi6.plus"
+                tooltip: "新增"
                 onClicked: {
                     var p = addButton.mapToItem(root, 0, addButton.height + 4)
                     root.openPopupAt(addMenu, p.x, p.y)
-                }
-                contentItem: Image {
-                    source: root.qta("mdi6.plus", root.textMuted, 14)
-                    sourceSize.width: 14
-                    sourceSize.height: 14
-                    fillMode: Image.PreserveAspectFit
                 }
             }
         }

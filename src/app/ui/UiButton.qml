@@ -57,14 +57,17 @@ Button {
     }
 
     contentItem: Item {
+        anchors.fill: parent
         implicitWidth: contentRow.implicitWidth
         implicitHeight: Math.max(control.iconSize, label.implicitHeight)
 
         Row {
             id: contentRow
             spacing: control.iconName.length > 0 && control.text.length > 0 ? Theme.space["1.5"] : 0
-            anchors.centerIn: parent
-            anchors.verticalCenterOffset: control.down ? 0.5 : 0
+            width: implicitWidth
+            height: Math.max(control.iconSize, label.implicitHeight)
+            x: Math.round((control.width - width) / 2)
+            y: Math.round((control.height - height) / 2) + (control.down ? 1 : 0)
 
             UiIcon {
                 visible: control.iconName.length > 0
