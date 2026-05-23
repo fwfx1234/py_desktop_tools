@@ -25,31 +25,26 @@
 
 常用命令：
 
-```powershell
+```bash
 uv sync
 uv run app
 ```
 
-Smoke 脚本位于 `scripts/`：
-
-```powershell
-scripts\smoke_compile.ps1
-scripts\smoke_import.ps1
-scripts\smoke_plugin_manifests.ps1
-scripts\smoke_storage.ps1
-scripts\smoke_tests.ps1
-```
-
-独立应用构建脚本：
-
-```powershell
-tools\build_windows.ps1
-```
-
-macOS：
+Smoke 测试：
 
 ```bash
-tools/build_macos.sh
+uv run python -m compileall src
+uv run pytest -v -m "not slow"
+```
+
+构建：
+
+```bash
+# macOS
+bash tools/build_macos.sh
+
+# Windows (PowerShell)
+tools\build_windows.ps1
 ```
 
 ## 文档维护规则

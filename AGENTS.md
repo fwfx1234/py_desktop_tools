@@ -5,6 +5,8 @@
 
 PySide6 + QML desktop toolbox with a uTools-like launcher. The app stays in the tray/background and is opened by global hotkeys such as `Alt+Space`.
 
+**Repo moved from `fwfx1234/py_desktop_tools` → `fwfx1234/suishou`.**
+
 ## Commands
 
 ```bash
@@ -28,7 +30,10 @@ Useful runtime env vars:
 - `PY_DESKTOP_PLUGIN_RETENTION_MS` changes retained plugin-session timeout for debugging.
 - `PY_DESKTOP_TOOLS_LOG_LEVEL` and `PY_DESKTOP_TOOLS_LOG_CONSOLE` control app logging.
 
-PowerShell smoke scripts still exist under `scripts/`, but this repo is currently developed from macOS/zsh. Prefer the `uv run ...` commands above on macOS.
+Build:
+```bash
+bash tools/build_macos.sh            # PyInstaller .app build
+```
 
 ## Current Architecture
 
@@ -39,11 +44,32 @@ src/
     app_runtime.py                 # Qt event-loop runtime and QML hot reload
     app_bootstrap.py               # QML engine, services, plugin managers, coordinators
     app_context.py                 # application lifecycle, startup scheduling, shutdown
+    app_view_model.py              # global QML context (theme, platform info)
+    app_relauncher.py              # self-restart (subprocess spawn)
+    hotkey_coordinator.py          # launcher/clipboard/plugin hotkey lifecycle
+    launcher_runtime_coordinator.py# launcher, plugin lifecycle signal wiring
+    plugin_surface_coordinator.py  # inline/list/window plugin host surfaces
+    tray_coordinator.py            # system tray coordinator
+    paths.py                       # project/user_data/cache/plugin path resolution
+    qta_icon_provider.py           # QtAwesome icon provider for QML
+    version.py                     # app version
     launcher/                      # launcher window, plugin host window, QML bridge
     commands/                      # command search/ranking, app index, dynamic commands
     plugins/                       # manifest loading, runtime loading, sessions, background plugins
     platform/                      # PlatformServices and macos/windows/noop implementations
+    platform/api.py                # PlatformApi — plugin-facing capability entry
+    platform/factory.py            # platform service assembly
+    platform/protocols.py          # platform capability protocols
+    platform/services.py           # PlatformServices aggregate
+    platform/models.py             # platform data models
+    platform/screen.py             # screen info utilities
+    platform/dialogs.py            # native dialog wrappers
+    platform/common/               # cross-platform implementations
+    platform/macos/                # macOS-specific implementations
+    platform/windows/              # Windows-specific implementations
+    platform/noop/                 # no-op stubs
     services/                      # pure Python app-level services
+    services/clipboard/            # clipboard history service (listener, store, models)
     storage/                       # SQLite/dict storage helpers
     logging/                       # structured app and Qt logging
     concurrency/                   # background task runner
@@ -57,7 +83,7 @@ src/
 Startup path:
 - `src/app/main.py:main()` configures logging, Qt style, fonts and `QApplication`.
 - `ApplicationRuntime.run()` builds the app, starts lifecycle hooks, optionally installs QML hot reload, then enters `qt_app.exec()`.
-- `ApplicationBootstrapper.build()` creates `QQmlApplicationEngine`, injects global QML context, loads manifests, assembles platform services, command services, plugin managers, session/surface/runtime coordinators, and tray coordinator.
+- `ApplicationBootstrapper.build()` creates `QQmlApplicationEngine`, injects global QML context (`app`, `launcherBridge`), loads manifests, assembles platform services, command services, plugin managers, session/surface/runtime coordinators, hotkey coordinator, and tray coordinator.
 - `ApplicationContext.start()` connects launcher signals, schedules hotkey registration, starts background plugins, shows tray, and starts app-index refresh.
 
 ## Plugin System
@@ -114,7 +140,7 @@ Layering rules:
 ## QML Context
 
 Global QML context properties:
-- `app` -> `AppViewModel`
+- `app` -> `AppViewModel` (theme mode, platform info)
 - `launcherBridge` -> `LauncherBridge`
 
 Plugin ViewModels are injected only while a session is active or retained. The property name comes from manifest `contextProperty`, for example `apiTestVm`, `clipboardVm`, `jsonParserVm`, `qrVm`, or `systemSettingsVm`.
@@ -122,32 +148,37 @@ Plugin ViewModels are injected only while a session is active or retained. The p
 ## Platform And Services
 
 - Cross-platform SDK-style capabilities belong under `src/app/platform/`.
-- `create_platform_services()` assembles `PlatformServices` from `macos/`, `windows/`, or `noop/` implementations plus common services.
-- Keep OS-specific behavior under `src/app/platform/macos/`, `windows/`, `noop/`, or `common/`; do not add old flat platform modules.
-- Plugins should use `ctx.platform` or `ctx.services` instead of importing OS-specific modules directly.
-- Plugins own their own ViewModel/UI-thread callback handling; do not add a generic Qt adapter layer just to wrap Qt.
+- `PlatformServices` aggregates: platform info, hotkeys, app indexing, clipboard, dialogs, screen, storage, dynamic commands, permissions.
+- Plugins use `ctx.platform` (a `PlatformApi`) instead of importing OS-specific modules directly.
+- System commands go through an allowlist — plugins cannot execute arbitrary shell commands.
+- `ServiceRegistry` provides cross-plugin services like clipboard listener/history.
 
 ## Storage, Logging, And Data
 
 - `StorageManager` owns app/plugin SQLite storage; startup data lives under `data/` unless `PY_DESKTOP_TOOLS_DATA_DIR` is set.
 - Command indexing uses `CommandIndexDb` and is refreshed at startup and periodically in the background.
 - Logging is structured through `app.logging`; app startup installs the Qt message handler.
+- Path resolution via `app.paths`: `project_root()`, `resource_root()`, `user_data_dir()`, `cache_dir()`, `plugin_dirs()`.
 - Avoid printing from runtime code unless it is intentionally part of a CLI/debug path.
 
 ## Testing
 
 - Pytest is configured in `pyproject.toml` with `testpaths = ["tests"]` and `pythonpath = ["src"]`.
 - Test markers include `unit`, `integration`, `contract`, and `slow`.
-- Current focused coverage is strongest around `api_test`, core architecture, and app indexing.
-- For feature changes, prefer focused tests near `tests/features/<feature>/` when practical.
-- If no focused test exists, at minimum run the closest relevant `uv run pytest ...` target plus `uv run python -m compileall src`.
 
-## Key Conventions
+## Bundle Features
 
-- Do not add code comments unless explicitly requested.
-- Python runtime is pinned by `.python-version` to `3.13`; `pyproject.toml` currently declares `requires-python = ">=3.10"`.
-- Dependencies and commands are managed by `uv`; the virtual env is `.venv`.
-- `pyproject.toml` sets `where = ["src"]` for setuptools package discovery.
-- Follow existing local style before introducing abstractions.
-- Keep edits scoped; do not rewrite unrelated architecture or generated lock data unless the task requires it.
-- Treat dirty git state as user work. Do not revert unrelated changes.
+| Feature | Type | Description |
+|---------|------|-------------|
+| `api_test` | inline_view/window | HTTP/WebSocket/Mock API testing tool |
+| `app_launcher` | list | System application index |
+| `clipboard` | background+window | Clipboard history with listener |
+| `download` | inline_view | Download manager |
+| `image_compress` | inline_view | Image compression tool |
+| `json_parser` | inline_view | JSON format/validate/minify |
+| `packet_capture` | window | Network capture (demo/WIP) |
+| `qml_demo` | inline_view | QML learning demos (17 pages) |
+| `qr` | inline_view | QR code generate/scan |
+| `quick_launch` | inline_view | Fast project/script launcher |
+| `remote_files` | window | Remote file manager (SSH/SFTP + xterm terminal) |
+| `system` | inline_view | Settings + About pages |
