@@ -266,6 +266,7 @@ src/features/system/
 | `activation` | string | 否 | `"lazy"`（默认）或 `"background"` |
 | `category` | string | 否 | 分类标签 |
 | `order` | int | 否 | 默认排序权重，越小越靠前 |
+| `requires` | string[] | 否 | 声明所需运行时能力，如 `["webengine"]` |
 | `window` | object | 否 | 窗口模式配置，见 4.2 |
 | `commands` | array | **是** | 命令列表，见第 5 章 |
 
@@ -292,6 +293,7 @@ src/features/system/
 |------|------|
 | `width` / `height` | `< 1.0` 表示屏幕比例，`>= 1` 表示绝对像素 |
 | `fullscreen` | `true` 时全屏，覆盖 width/height |
+| `alwaysOnTop` | `true` 时窗口置顶 |
 
 默认窗口大小 800 x 600。当前插件 Session 仍按 `pluginId` 管理，因此同一个插件暂时只支持单窗口实例；如果后续要支持多实例，需要先引入 `sessionId`。
 
@@ -418,9 +420,10 @@ def create_runtime():
 ```python
 @dataclass
 class PluginContext:
-    command_index: object | None        # CommandIndexDb 实例
-    platform: object | None             # PlatformApi，插件首选入口
-    services: ServiceRegistry           # 共享服务注册表
+    command_index: object | None = None         # CommandIndexDb 实例
+    command_service: object | None = None       # CommandService 实例
+    platform: object | None = None              # PlatformApi，插件首选入口
+    services: ServiceRegistry = ...             # 共享服务注册表
 ```
 
 | 属性 | 用途 |
@@ -428,6 +431,7 @@ class PluginContext:
 | `ctx.platform` | 平台能力入口，优先使用 |
 | `ctx.services.clipboard` | 获取剪切板后台服务（监听、存储、读取） |
 | `ctx.command_index` | 读取/写入启动次数和最近使用记录 |
+| `ctx.command_service` | 命令搜索和执行服务 |
 
 推荐写法：
 
@@ -457,8 +461,10 @@ def on_enter(self, ctx: PluginContext, action: PluginAction):
 class PluginAction:
     manifest: PluginManifest     # 当前 Manifest
     command_id: str              # 触发的命令 ID
-    input_text: str              # 用户输入文本（去掉前缀后的业务内容）
-    payload: dict                # Manifest 中声明的 payload
+    input_text: str = ""         # 用户输入文本（去掉前缀后的业务内容）
+    payload: dict = {}           # Manifest 中声明的 payload
+    trace_id: str = ""           # 追踪 ID，用于日志关联
+    session_id: str = ""         # 会话 ID，用于多实例区分
 ```
 
 ---
@@ -847,18 +853,18 @@ ColumnLayout {
 
 后台插件在应用启动时就开始运行（不创建 UI），持续在后台提供服务。用户打开时才创建 UI Session。关闭 UI 不影响后台服务继续运行。
 
-### 12.2 必须实现的方法
+### 12.2 可选方法
 
 ```python
 class MyBackgroundRuntime:
     def on_background_start(self, ctx: PluginContext) -> None:
         """应用启动时调用。创建后台服务并注册。"""
         self._service = MyBackgroundService()
-        ctx.services["my.bg.key"] = self._service
+        ctx.services.clipboard = self._service   # 属性赋值，非 dict
 
     def on_enter(self, ctx, action) -> PluginSession:
         """用户打开时调用。创建 ViewModel（引用后台服务）"""
-        service = ctx.services.get("my.bg.key")
+        service = getattr(ctx.services, 'clipboard', None)
         view_model = MyWindowViewModel(service)
         return QmlPluginSession(action.manifest, "inline_view", view_model)
 
@@ -871,6 +877,8 @@ class MyBackgroundRuntime:
         """UI Session 关闭时调用。后台服务不受影响。"""
         pass
 ```
+
+> `on_background_start` 和 `on_background_stop` 是**可选的 duck-typed 钩子**，不是 `PluginRuntime` 协议的必需方法。`BackgroundManager` 在运行时通过 `getattr(runtime, "on_background_start", None)` 发现它们。
 
 ### 12.3 关键行为
 
@@ -889,6 +897,11 @@ from app.storage import StorageManager
 
 SERVICE_KEY = "clipboard.background"
 
+def _create_backend():
+    """创建剪贴板监听后端（根据平台选择）。"""
+    from app.services.clipboard.backends import create_clipboard_backend
+    return create_clipboard_backend()
+
 class ClipboardRuntime:
     def on_background_start(self, ctx):
         storage = ctx.services.storage
@@ -901,7 +914,7 @@ class ClipboardRuntime:
                 "clipboard/settings",
                 defaults=DEFAULT_CLIPBOARD_CONFIG,
             ),
-            backend=create_backend(),
+            backend=_create_backend(),
         )
         self._service.start()
         ctx.services.clipboard = self._service
@@ -929,12 +942,14 @@ class ClipboardRuntime:
 ```python
 @dataclass
 class LauncherContext:
-    input_text: str                    # 完整输入文本
-    input_body: str                    # 去掉前缀后的文本
-    prefix: str                        # 识别到的前缀
-    detected_input_kinds: frozenset    # 检测到的文本类型: {"json", "url", ...}
-    clipboard_text: str                # 剪切板文本
-    detected_clipboard_kinds: frozenset  # 剪切板类型
+    input_text: str = ""                   # 完整输入文本
+    input_body: str = ""                   # 去掉前缀后的文本
+    prefix: str = ""                       # 识别到的前缀
+    detected_input_kinds: frozenset[str] = ()  # 检测到的文本类型: {"json", "url", ...}
+    clipboard_type: str = ""               # 剪切板数据类型（text / image / files）
+    clipboard_preview: str = ""            # 剪切板内容预览（前 100 字符）
+    clipboard_text: str = ""               # 剪切板完整文本
+    detected_clipboard_kinds: frozenset[str] = ()  # 剪切板类型
 ```
 
 ### 13.2 Matcher 声明
@@ -1070,9 +1085,9 @@ class DynamicCommand:
     icon: str = ""
     keywords: list[str] = field(default_factory=list)
     prefixes: list[str] = field(default_factory=list)
-    matchers: list[ContextMatcher] = field(default_factory=list)
+    matchers: list[object] = field(default_factory=list)
     launch_mode: LaunchMode = "none"
-    order: int = 99
+    order: int = 500
     payload: dict = field(default_factory=dict)
 ```
 
@@ -1092,18 +1107,17 @@ if service:
     latest = service.latest_context_item()
 ```
 
-### 16.2 通过 manifest.json 声明依赖（建议）
+### 16.2 通过 plugin.json 声明依赖（建议）
 
 ```json
 {
   "id": "my-tool",
-  "dependencies": {
-    "clipboard": ">=1.0.0"
-  }
+  "requires": ["webengine"]
 }
 ```
 
-当前版本尚未强制校验依赖，但建议在 Manifest 中声明。
+`requires` 字段声明插件所需的运行时能力。当前支持：`"webengine"`（需要 `QtWebEngine`）。
+当前版本不会在加载时强制校验，缺少能力时插件在运行时自行处理降级或提示。
 
 ### 16.3 最佳实践
 
@@ -1251,13 +1265,16 @@ def process(self, text):  # ✗ QML 调不到
 
 | 插件 ID | 名称 | launchMode | activation | 特点 |
 |---------|------|-----------|------------|------|
-| `json-parser` | JSON 解析 | inline_view | lazy | 简单完整插件，学习起点 |
+| `json-parser` | JSON 解析 | window | lazy | 简单完整插件，学习起点 |
 | `qr-code` | 二维码 | inline_view | lazy | ViewModel + Service 分层 |
 | `image-compress` | 图片压缩 | inline_view | lazy | 使用 ctx.services 获取剪切板 |
 | `api-test` | API 测试 | window | lazy | 最复杂插件，全功能 MVVM |
-| `clipboard` | 剪切板 | inline_view | **background** | 后台服务 + 懒 UI |
+| `clipboard` | 剪切板 | window | **background** | 后台服务 + 懒 UI |
 | `download` | 下载工具 | window | lazy | 窗口模式参考 |
 | `app-launcher` | 软件快速启动 | list | lazy | list 模式参考 |
-| `packet-capture` | 网络抓包 | window | lazy | 窗口模式 |
+| `packet-capture` | 网络抓包 | window | lazy | 基于 mitmproxy 真实代理 |
+| `qml-demo` | QML 学习演示 | inline_view | lazy | 17 个 QML 示例页面 |
+| `quick-launch` | 快速启动 | window | **background** | 项目/脚本动作启动器 |
+| `remote-files` | 远程文件管理 | window | lazy | SSH/SFTP + xterm 终端 |
 | `system-settings` | 系统设置 | inline_view | lazy | 无 contextProperty |
 | `about` | 关于 | inline_view | lazy | 多 Manifest 共享 Runtime |

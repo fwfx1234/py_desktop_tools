@@ -89,7 +89,7 @@ Use these class names as naming inspiration in docs/reviews even though implemen
 
 ### Project Tailwind Preset Contract
 
-This project uses a **Tailwind-style design preset** as the single source of truth, implemented in `src/app/theme/Theme.js`.
+This project uses a **Tailwind-style design preset** as the single source of truth, implemented in `src/app/theme/Theme.qml`.
 
 - `palette`: Tailwind-like color scales (`slate`, `blue`, `green`, `amber`, `red`, `cyan`)
 - `light` / `dark`: semantic tokens mapped from palette

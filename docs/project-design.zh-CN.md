@@ -323,10 +323,10 @@ PY_DESKTOP_QML_HOT_RELOAD=1 uv run app
 
 ## 15. 当前边界说明
 
-- `packet_capture` 当前仍偏演示/占位，不应视为完整抓包实现。
+- `packet_capture` 已基于 mitmproxy 实现了真实本地代理和 HTTPS 解密（需用户信任 CA 证书），但仍处于迭代阶段。
 - API 测试插件已有 HTTP/WebSocket/Mock 等主链路，但 GraphQL 交互仍不是完整完成态。
 - `remote_files`（SSH/SFTP 远程文件管理 + xterm 终端）已具备基本功能但仍在迭代。
 - `quick_launch`（快速启动项目/脚本动作）已具备基本功能但尚未覆盖所有使用场景。
 - macOS 平台实现和 `.app` 构建脚本已经具备基础结构，仍需要在真实 macOS 环境做权限、热键、应用索引和打包回归。
 - 旧的阶段性规划已经合并到本文档；后续如果新增规划，完成后也应回收进长期文档。
-- 所有文档中引用 PowerShell 命令的片段已统一迁移为 macOS/zsh 命令；Windows 构建文档单独在 `build_windows.ps1` 中维护。
+- 插件私有数据默认保存到 `~/Downloads/PyDesktopTools/<PluginName>/`（macOS）/ `%USERPROFILE%\\Downloads\\PyDesktopTools\\<PluginName>\\`（Windows）。

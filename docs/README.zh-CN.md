@@ -18,7 +18,6 @@
 
 - [项目设计文档](./project-design.zh-CN.md)：项目主设计文档。
 - [插件开发文档](./plugin-development.zh-CN.md)：插件 API 和工程规范。
-- [快速启动插件实现计划](./quick-launch-plugin-plan.zh-CN.md)：快速启动项目与脚本动作插件的阶段性实现方案。
 - [UI Design System](../design-system/desktop-tools/MASTER.md)：桌面工具 UI 视觉和组件规范。
 
 ## 构建与验证
