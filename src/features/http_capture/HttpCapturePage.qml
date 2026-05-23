@@ -29,6 +29,7 @@ Item {
     property bool composerSending: false
     property string composerHeadersText: ""
     property string composerBodyText: ""
+    property string guideMode: "desktop"
 
     readonly property bool compressedLayout: width < 1180
     readonly property bool compactLayout: width < 1040
@@ -170,6 +171,29 @@ Item {
         return (items || []).map(function(h) { return h.name + " = " + h.value }).join("\n")
     }
 
+    function responseBodyText() {
+        var body = selectedDetail.responseBodyDisplay || selectedDetail.responseBody || ""
+        if (body.length === 0 && (selectedDetail.responseSize || currentSummary().responseSize || 0) > 0)
+            body = "[响应正文无法按文本显示，可能是二进制内容或服务器未返回可解码文本]"
+        if (selectedDetail.responseBodyTruncated)
+            body += "\n\n[正文过大已截断]"
+        return body
+    }
+
+    function requestBodyText() {
+        var body = selectedDetail.requestBodyDisplay || selectedDetail.requestBody || ""
+        if (body.length === 0 && (selectedDetail.requestSize || currentSummary().requestSize || 0) > 0)
+            body = "[请求正文无法按文本显示，可能是二进制内容或上传流]"
+        if (selectedDetail.requestBodyTruncated)
+            body += "\n\n[正文过大已截断]"
+        return body
+    }
+
+    function openGuide(mode) {
+        guideMode = mode || "desktop"
+        setupGuidePopup.open()
+    }
+
     function currentSummary() {
         for (var i = 0; i < rows.length; i++) {
             if (rows[i].id === selectedFlowId) return rows[i]
@@ -269,11 +293,10 @@ Item {
                         }
                     }
 
-                    Label {
+                    SelectableLine {
                         Layout.fillWidth: true
                         text: captureState.proxyUrl ? (captureState.mobileProxyUrl ? captureState.proxyUrl + " / 手机 " + captureState.mobileProxyUrl : captureState.proxyUrl) : "默认监听 127.0.0.1:8899"
                         color: textSubtle
-                        elide: Text.ElideMiddle
                         font.pixelSize: Theme.fontSize.caption
                         font.family: Theme.fontFamily.mono
                     }
@@ -325,8 +348,8 @@ Item {
                 IconAction {
                     visible: !narrowLayout
                     iconName: "mdi6.certificate-outline"
-                    tooltip: "打开证书目录"
-                    onClicked: httpCaptureVm.revealCertDir()
+                    tooltip: "HTTPS 解密证书引导"
+                    onClicked: openGuide("desktop")
                 }
 
                 IconAction {
@@ -595,8 +618,8 @@ Item {
                     InfoCard {
                         title: "HTTPS 解密"
                         body: captureState.certExists
-                            ? "证书已生成。浏览器或手机信任该证书后可解密 HTTPS。"
-                            : "先启动代理生成证书，再信任 mitmproxy CA。"
+                            ? "证书已生成。按引导信任后可查看 HTTPS 请求和响应正文。"
+                            : "先启动代理生成证书，再按引导完成信任。"
                         tone: captureState.certExists ? "success" : "warning"
                     }
 
@@ -606,15 +629,15 @@ Item {
 
                         UiButton {
                             Layout.fillWidth: true
-                            text: "证书目录"
+                            text: "安装引导"
                             dark: root.dark
                             variant: "ghost"
-                            onClicked: httpCaptureVm.revealCertDir()
+                            onClicked: openGuide("desktop")
                         }
 
                         UiButton {
                             Layout.fillWidth: true
-                            text: "信任证书"
+                            text: "自动信任"
                             dark: root.dark
                             variant: "ghost"
                             enabled: !!captureState.certExists
@@ -647,7 +670,7 @@ Item {
                     InfoCard {
                         title: "手机抓包"
                         body: captureState.mobileProxyUrl
-                            ? ("手机代理设为 " + captureState.mobileProxyUrl + "，再访问 mitm.it 安装证书。")
+                            ? ("手机代理 " + captureState.mobileProxyUrl + "，按引导安装手机证书。")
                             : ((captureState.lanIp || "").length > 0 ? ("可用局域网 IP: " + captureState.lanIp) : "未识别到局域网 IP")
                         tone: captureState.mobileProxyUrl ? "success" : "neutral"
                     }
@@ -658,11 +681,10 @@ Item {
 
                         UiButton {
                             Layout.fillWidth: true
-                            text: "手机模式"
+                            text: "手机引导"
                             dark: root.dark
                             variant: "ghost"
-                            enabled: !captureState.running && !captureState.busy
-                            onClicked: httpCaptureVm.startMobileCapture()
+                            onClicked: openGuide("mobile")
                         }
 
                         UiButton {
@@ -853,13 +875,22 @@ Item {
                                         tone: "warning"
                                         compact: true
                                     }
-                                    Label {
+                                    TextEdit {
                                         Layout.fillWidth: true
                                         text: rowTitle(modelData)
                                         color: modelData.error ? dangerColor : textMain
-                                        elide: Text.ElideMiddle
                                         font.pixelSize: Theme.fontSize.caption
                                         font.family: Theme.fontFamily.mono
+                                        readOnly: true
+                                        selectByMouse: true
+                                        selectByKeyboard: true
+                                        persistentSelection: true
+                                        activeFocusOnPress: true
+                                        textFormat: TextEdit.PlainText
+                                        wrapMode: TextEdit.NoWrap
+                                        clip: true
+                                        selectedTextColor: root.textMain
+                                        selectionColor: Theme.token("color-primary-hover", root.dark)
                                     }
                                 }
 
@@ -935,11 +966,10 @@ Item {
                         Layout.fillWidth: true
                         spacing: Theme.space["1"]
 
-                        Label {
+                        SelectableLine {
                             Layout.fillWidth: true
                             text: selectedFlowId ? (selectedDetail.requestUrl || currentSummary().url || "-") : "未选择会话"
                             color: textMain
-                            elide: Text.ElideMiddle
                             font.pixelSize: Theme.fontSize.caption
                             font.family: Theme.fontFamily.mono
                         }
@@ -1035,6 +1065,8 @@ Item {
 
                                 InspectorRow { k: "Method"; v: selectedDetail.requestMethod || currentSummary().method || "-" }
                                 InspectorRow { k: "URL"; v: selectedDetail.requestUrl || currentSummary().url || "-" }
+                                InspectorRow { k: "Path"; v: currentSummary().path || "-" }
+                                InspectorRow { k: "Host"; v: currentSummary().host || "-" }
                                 InspectorRow { k: "Status"; v: selectedDetail.responseStatus ? selectedDetail.responseStatus + " " + (selectedDetail.responseReason || "") : (currentSummary().error ? "ERR" : "-") }
                                 InspectorRow { k: "Started"; v: selectedDetail.startedIso || currentSummary().startedIso || "-" }
                                 InspectorRow { k: "TLS"; v: currentSummary().encrypted ? "HTTPS" : "HTTP" }
@@ -1048,14 +1080,33 @@ Item {
                             handle: Rectangle { implicitHeight: 5; color: "transparent" }
 
                             TextInspector {
-                                SplitView.fillHeight: true
+                                SplitView.preferredHeight: Math.max(112, inspectorPanel.height * 0.34)
+                                SplitView.minimumHeight: 92
                                 title: "Request Headers"
                                 body: headersText(selectedDetail.requestHeaders)
                             }
                             TextInspector {
                                 SplitView.fillHeight: true
                                 title: "Request Body"
-                                body: (selectedDetail.requestBody || "") + (selectedDetail.requestBodyTruncated ? "\n\n[正文过大已截断]" : "")
+                                body: requestBodyText()
+                            }
+                        }
+
+                        SplitView {
+                            orientation: Qt.Vertical
+                            handle: Rectangle { implicitHeight: 5; color: "transparent" }
+
+                            TextInspector {
+                                SplitView.preferredHeight: Math.max(112, inspectorPanel.height * 0.34)
+                                SplitView.minimumHeight: 92
+                                title: "Response Headers"
+                                body: headersText(selectedDetail.responseHeaders)
+                            }
+                            TextInspector {
+                                SplitView.fillHeight: true
+                                title: "Response Body"
+                                body: responseBodyText()
+                                placeholder: selectedFlowId ? "响应正文为空" : "选择一条会话查看响应正文"
                             }
                         }
 
@@ -1065,19 +1116,19 @@ Item {
 
                             TextInspector {
                                 SplitView.fillHeight: true
-                                title: "Response Headers"
-                                body: headersText(selectedDetail.responseHeaders)
+                                title: "Query String"
+                                body: kvText(selectedDetail.queryParams)
                             }
                             TextInspector {
                                 SplitView.fillHeight: true
-                                title: "Response Body"
-                                body: (selectedDetail.responseBody || "") + (selectedDetail.responseBodyTruncated ? "\n\n[正文过大已截断]" : "")
+                                title: "Request Body Params"
+                                body: kvText(selectedDetail.requestBodyParams)
                             }
-                        }
-
-                        TextInspector {
-                            title: "Query String"
-                            body: kvText(selectedDetail.queryParams)
+                            TextInspector {
+                                SplitView.fillHeight: true
+                                title: "Response Fields"
+                                body: kvText(selectedDetail.responseBodyParams)
+                            }
                         }
 
                         SplitView {
@@ -1181,21 +1232,202 @@ Item {
                 anchors.rightMargin: Theme.space["2"]
                 spacing: Theme.space["2"]
 
-                Label {
+                SelectableLine {
                     text: statusText
                     color: statusColor
                     font.pixelSize: Theme.fontSize.caption
-                    elide: Text.ElideMiddle
                     Layout.fillWidth: true
                 }
 
-                Label {
+                SelectableLine {
                     text: "证书: " + (captureState.certExists ? captureState.certPath : "未生成")
                     color: textSubtle
                     font.pixelSize: Theme.fontSize.caption
                     font.family: Theme.fontFamily.mono
-                    elide: Text.ElideMiddle
                     Layout.maximumWidth: root.width * 0.48
+                }
+            }
+        }
+    }
+
+    Popup {
+        id: setupGuidePopup
+        modal: true
+        dim: true
+        focus: true
+        anchors.centerIn: Overlay.overlay
+        width: Math.min(root.width - 48, guideMode === "mobile" ? 620 : 580)
+        height: Math.min(root.height - 48, guideColumn.implicitHeight + 28)
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+        background: Rectangle {
+            color: panelBg
+            radius: Theme.radii.md
+            border.color: panelBorder
+            border.width: 1
+        }
+
+        ColumnLayout {
+            id: guideColumn
+            anchors.fill: parent
+            anchors.margins: Theme.space["2"]
+            spacing: Theme.space["2"]
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Theme.space["1.5"]
+
+                Rectangle {
+                    Layout.preferredWidth: 34
+                    Layout.preferredHeight: 34
+                    radius: Theme.radii.md
+                    color: subtleBg2
+
+                    UiIcon {
+                        anchors.centerIn: parent
+                        width: 18
+                        height: 18
+                        name: guideMode === "mobile" ? "mdi6.cellphone-link" : "mdi6.certificate-outline"
+                        color: guideMode === "mobile" ? infoColor : successColor
+                        iconSize: 18
+                    }
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: guideMode === "mobile" ? "手机抓包与证书安装" : "HTTPS 解密证书安装"
+                        color: textMain
+                        font.family: Theme.fontFamily.ui
+                        font.pixelSize: Theme.fontSize.title
+                        font.bold: true
+                        elide: Text.ElideRight
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: guideMode === "mobile"
+                            ? (captureState.mobileProxyUrl ? "代理地址 " + captureState.mobileProxyUrl : "先启动手机模式，再在手机 Wi-Fi 中配置代理")
+                            : (captureState.certExists ? "证书已生成: " + captureState.certPath : "先启动代理生成 mitmproxy CA 证书")
+                        color: textSubtle
+                        font.pixelSize: Theme.fontSize.caption
+                        font.family: Theme.fontFamily.mono
+                        elide: Text.ElideMiddle
+                    }
+                }
+
+                IconAction {
+                    iconName: "mdi6.close"
+                    tooltip: "关闭"
+                    onClicked: setupGuidePopup.close()
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 1
+                color: panelBorder
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: Theme.space["1"]
+                visible: guideMode !== "mobile"
+
+                GuideStep {
+                    number: "1"
+                    title: "启动代理"
+                    body: captureState.running
+                        ? "代理已启动，系统代理会自动指向本机代理地址。"
+                        : "点击启动代理，应用会生成证书并接管系统 HTTP/HTTPS 代理。"
+                    actionText: captureState.running ? "已启动" : "启动代理"
+                    actionEnabled: !captureState.running && !captureState.busy
+                    actionIcon: captureState.running ? "mdi6.check" : "mdi6.play"
+                    onAction: httpCaptureVm.startHttpCapture()
+                }
+
+                GuideStep {
+                    number: "2"
+                    title: "信任桌面证书"
+                    body: captureState.certExists
+                        ? "点击自动信任会把证书加入当前用户信任根；也可以打开目录手动安装。"
+                        : "证书还未生成，请先启动一次代理。"
+                    actionText: "自动信任"
+                    actionEnabled: !!captureState.certExists
+                    actionIcon: "mdi6.certificate-outline"
+                    secondaryText: "打开目录"
+                    secondaryEnabled: true
+                    onAction: httpCaptureVm.installDesktopCertificate()
+                    onSecondary: httpCaptureVm.revealCertDir()
+                }
+
+                GuideStep {
+                    number: "3"
+                    title: "验证 HTTPS 解密"
+                    body: "访问任意 HTTPS 网站后，在会话列表中选择请求，响应页会显示 Headers 和 Body。"
+                    actionText: "打开 mitm.it"
+                    actionEnabled: !!captureState.running
+                    actionIcon: "mdi6.open-in-new"
+                    secondaryText: "复制地址"
+                    secondaryEnabled: true
+                    onAction: httpCaptureVm.openCertInstallUrl()
+                    onSecondary: httpCaptureVm.copyCertInstallUrl()
+                }
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: Theme.space["1"]
+                visible: guideMode === "mobile"
+
+                GuideStep {
+                    number: "1"
+                    title: "启动手机模式"
+                    body: captureState.mobileProxyUrl
+                        ? "手机模式已启动，本机正在监听局域网代理地址。"
+                        : ((captureState.lanIp || "").length > 0 ? "确保电脑和手机在同一 Wi-Fi，然后启动手机模式。" : "未识别到局域网 IP，请确认电脑已连接网络。")
+                    actionText: captureState.mobileProxyUrl ? "已启动" : "启动手机模式"
+                    actionEnabled: !captureState.running && !captureState.busy
+                    actionIcon: captureState.mobileProxyUrl ? "mdi6.check" : "mdi6.cellphone-link"
+                    onAction: httpCaptureVm.startMobileCapture()
+                }
+
+                GuideStep {
+                    number: "2"
+                    title: "配置手机 Wi-Fi 代理"
+                    body: captureState.mobileProxyUrl
+                        ? "在手机当前 Wi-Fi 的 HTTP 代理中选择手动，服务器填 " + captureState.lanIp + "，端口填 " + captureState.listenPort + "。"
+                        : "手机模式启动后，这里会显示服务器和端口。"
+                    actionText: "复制代理"
+                    actionEnabled: !!captureState.mobileProxyUrl
+                    actionIcon: "mdi6.content-copy"
+                    onAction: httpCaptureVm.copyMobileProxyAddress()
+                }
+
+                GuideStep {
+                    number: "3"
+                    title: "安装并信任手机证书"
+                    body: "手机浏览器访问 mitm.it。iOS 安装描述文件后到证书信任中启用完全信任；Android 在安全/凭据中安装 CA 证书。"
+                    actionText: "复制 mitm.it"
+                    actionEnabled: !!captureState.running
+                    actionIcon: "mdi6.content-copy"
+                    secondaryText: "桌面打开"
+                    secondaryEnabled: true
+                    onAction: httpCaptureVm.copyCertInstallUrl()
+                    onSecondary: httpCaptureVm.openCertInstallUrl()
+                }
+
+                GuideStep {
+                    number: "4"
+                    title: "开始抓包"
+                    body: "手机应用或浏览器产生请求后，会话会实时进入列表；HTTPS 正文需要手机证书已信任。"
+                    actionText: "关闭"
+                    actionEnabled: true
+                    actionIcon: "mdi6.check"
+                    onAction: setupGuidePopup.close()
                 }
             }
         }
@@ -1499,6 +1731,141 @@ Item {
         }
     }
 
+    component GuideStep: Rectangle {
+        property string number: ""
+        property string title: ""
+        property string body: ""
+        property string actionText: ""
+        property string actionIcon: "mdi6.play"
+        property bool actionEnabled: true
+        property string secondaryText: ""
+        property bool secondaryEnabled: false
+        signal action()
+        signal secondary()
+
+        Layout.fillWidth: true
+        Layout.preferredHeight: Math.max(74, guideStepRow.implicitHeight + 16)
+        radius: Theme.radii.md
+        color: subtleBg2
+        border.color: panelBorder
+        border.width: 1
+
+        RowLayout {
+            id: guideStepRow
+            anchors.fill: parent
+            anchors.margins: Theme.space["1"]
+            spacing: Theme.space["1.5"]
+
+            Rectangle {
+                Layout.preferredWidth: 26
+                Layout.preferredHeight: 26
+                radius: 13
+                color: root.accent
+
+                Label {
+                    anchors.centerIn: parent
+                    text: number
+                    color: Theme.token("color-bg-surface", false)
+                    font.pixelSize: Theme.fontSize.caption
+                    font.bold: true
+                    font.family: Theme.fontFamily.ui
+                }
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 2
+
+                Label {
+                    Layout.fillWidth: true
+                    text: title
+                    color: textMain
+                    font.pixelSize: Theme.fontSize.body
+                    font.bold: true
+                    font.family: Theme.fontFamily.ui
+                    elide: Text.ElideRight
+                }
+
+                Label {
+                    Layout.fillWidth: true
+                    text: body
+                    color: textSubtle
+                    font.pixelSize: Theme.fontSize.caption
+                    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                    maximumLineCount: 3
+                    elide: Text.ElideRight
+                }
+            }
+
+            IconTextAction {
+                visible: secondaryText.length > 0
+                text: secondaryText
+                iconName: "mdi6.dots-horizontal"
+                enabled: secondaryEnabled
+                onClicked: secondary()
+            }
+
+            IconTextAction {
+                text: actionText
+                iconName: actionIcon
+                accent: true
+                enabled: actionEnabled
+                onClicked: action()
+            }
+        }
+    }
+
+    component IconTextAction: Rectangle {
+        id: iconTextAction
+
+        property alias text: actionLabel.text
+        property string iconName: ""
+        property bool accent: false
+        signal clicked()
+
+        Layout.preferredWidth: Math.max(76, actionLabel.implicitWidth + 36)
+        Layout.preferredHeight: 30
+        radius: Theme.radii.md
+        color: {
+            if (!enabled) return subtleBg
+            if (actionMouse.pressed) return accent ? Qt.darker(root.accent, 1.15) : panelBorder
+            if (actionMouse.containsMouse) return accent ? Theme.token("color-primary", root.dark) : subtleBg
+            return accent ? root.accent : panelBg
+        }
+        border.color: accent ? "transparent" : panelBorder
+        border.width: 1
+        opacity: enabled ? 1 : 0.5
+
+        RowLayout {
+            anchors.centerIn: parent
+            spacing: 4
+
+            UiIcon {
+                Layout.preferredWidth: 14
+                Layout.preferredHeight: 14
+                name: iconTextAction.iconName
+                color: iconTextAction.accent ? Theme.token("color-bg-surface", false) : root.textMain
+                iconSize: 14
+            }
+
+            Label {
+                id: actionLabel
+                color: iconTextAction.accent ? Theme.token("color-bg-surface", false) : root.textMain
+                font.pixelSize: Theme.fontSize.caption
+                font.family: Theme.fontFamily.ui
+                elide: Text.ElideRight
+            }
+        }
+
+        MouseArea {
+            id: actionMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: parent.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+            onClicked: if (parent.enabled) parent.clicked()
+        }
+    }
+
     component StatusBars: ColumnLayout {
         property int okCount: 0
         property int redirectCount: 0
@@ -1557,6 +1924,8 @@ Item {
     }
 
     component InspectorRow: RowLayout {
+        id: inspectorRow
+
         property string k: ""
         property string v: ""
         property bool danger: false
@@ -1565,21 +1934,42 @@ Item {
         spacing: Theme.space["2"]
 
         Label {
-            text: k
+            text: inspectorRow.k
             Layout.preferredWidth: 72
-            color: textSubtle
+            color: root.textSubtle
             font.pixelSize: Theme.fontSize.caption
             font.family: Theme.fontFamily.mono
         }
 
-        Label {
+        TextEdit {
             Layout.fillWidth: true
-            text: v
-            color: danger ? dangerColor : textMain
+            text: inspectorRow.v
+            color: inspectorRow.danger ? root.dangerColor : root.textMain
             wrapMode: Text.WrapAtWordBoundaryOrAnywhere
             font.pixelSize: Theme.fontSize.caption
             font.family: Theme.fontFamily.mono
+            readOnly: true
+            selectByMouse: true
+            selectByKeyboard: true
+            persistentSelection: true
+            activeFocusOnPress: true
+            textFormat: TextEdit.PlainText
+            selectedTextColor: root.textMain
+            selectionColor: Theme.token("color-primary-hover", root.dark)
         }
+    }
+
+    component SelectableLine: TextEdit {
+        readOnly: true
+        selectByMouse: true
+        selectByKeyboard: true
+        persistentSelection: true
+        activeFocusOnPress: true
+        textFormat: TextEdit.PlainText
+        wrapMode: TextEdit.NoWrap
+        clip: true
+        selectedTextColor: root.textMain
+        selectionColor: Theme.token("color-primary-hover", root.dark)
     }
 
     component TextInspector: Rectangle {
@@ -1610,16 +2000,21 @@ Item {
             }
 
             UiScrollView {
+                id: inspectorScroll
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
 
                 UiTextArea {
                     id: inspectorText
-                    width: parent.width
-                    height: parent.height
+                    width: inspector.editable
+                        ? inspectorScroll.availableWidth
+                        : Math.max(inspectorScroll.availableWidth, contentWidth + leftPadding + rightPadding)
+                    height: Math.max(inspectorScroll.availableHeight, contentHeight + topPadding + bottomPadding)
                     dark: root.dark
                     readOnly: !inspector.editable
+                    selectByMouse: true
+                    persistentSelection: true
                     wrapMode: TextEdit.NoWrap
                     text: inspector.body || ""
                     placeholderText: inspector.placeholder

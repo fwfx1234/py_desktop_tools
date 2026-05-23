@@ -9,11 +9,13 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Iterable
 from urllib.parse import parse_qsl, urlsplit
+from xml.dom import minidom
 
 DEFAULT_LISTEN_HOST = "127.0.0.1"
 LAN_LISTEN_HOST = "0.0.0.0"
@@ -148,13 +150,17 @@ class FlowDetail:
             "requestMethod": self.request_method,
             "requestHeaders": [{"name": k, "value": v} for k, v in self.request_headers],
             "requestBody": self.request_body,
+            "requestBodyDisplay": _format_body_text(self.request_body, self.request_headers),
             "requestBodyTruncated": self.request_body_truncated,
+            "requestBodyParams": [{"name": k, "value": v} for k, v in _body_params(self.request_body, self.request_headers)],
             "requestSize": self.request_size,
             "responseStatus": self.response_status,
             "responseReason": self.response_reason,
             "responseHeaders": [{"name": k, "value": v} for k, v in self.response_headers],
             "responseBody": self.response_body,
+            "responseBodyDisplay": _format_body_text(self.response_body, self.response_headers),
             "responseBodyTruncated": self.response_body_truncated,
+            "responseBodyParams": [{"name": k, "value": v} for k, v in _body_params(self.response_body, self.response_headers)],
             "responseSize": self.response_size,
             "durationMs": self.duration_ms,
             "startedAt": self.started_at,
@@ -235,11 +241,10 @@ def summarize_flow(flow_obj) -> FlowSummary:
                 break
     request_size = 0
     if request is not None:
-        request_size = len(getattr(request, "raw_content", None) or b"")
+        request_size = len(_message_content(request))
     response_size = 0
     if response is not None:
-        raw = getattr(response, "raw_content", None) or b""
-        response_size = len(raw)
+        response_size = len(_message_content(response))
     error = ""
     if getattr(flow_obj, "error", None) is not None:
         error = str(getattr(flow_obj.error, "msg", flow_obj.error))
@@ -294,7 +299,7 @@ def flow_detail(flow_obj) -> FlowDetail:
     )
     if request is not None:
         detail.request_headers = _headers_list(request.headers)
-        raw = getattr(request, "raw_content", None) or b""
+        raw = _message_content(request)
         detail.request_size = len(raw)
         body, truncated = _decode_body(raw, request.headers)
         detail.request_body = body
@@ -304,7 +309,7 @@ def flow_detail(flow_obj) -> FlowDetail:
         detail.response_status = int(getattr(response, "status_code", 0) or 0)
         detail.response_reason = getattr(response, "reason", "") or ""
         detail.response_headers = _headers_list(response.headers)
-        raw = getattr(response, "raw_content", None) or b""
+        raw = _message_content(response)
         detail.response_size = len(raw)
         body, truncated = _decode_body(raw, response.headers)
         detail.response_body = body
@@ -320,6 +325,42 @@ def _headers_list(headers) -> list[tuple[str, str]]:
         return [(str(name), str(value)) for name, value in headers.items()]
     except Exception:
         return []
+
+
+def _message_content(message) -> bytes:
+    if message is None:
+        return b""
+    get_content = getattr(message, "get_content", None)
+    if callable(get_content):
+        for kwargs in ({"strict": False}, {}):
+            try:
+                data = get_content(**kwargs)
+            except Exception:
+                continue
+            if data is not None:
+                return _bytes_value(data)
+    raw = getattr(message, "raw_content", None)
+    if raw is not None:
+        return _bytes_value(raw)
+    content = getattr(message, "content", None)
+    if content is not None:
+        return _bytes_value(content)
+    return b""
+
+
+def _bytes_value(value) -> bytes:
+    if value is None:
+        return b""
+    if isinstance(value, bytes):
+        return value
+    if isinstance(value, bytearray):
+        return bytes(value)
+    if isinstance(value, str):
+        return value.encode("utf-8")
+    try:
+        return bytes(value)
+    except Exception:
+        return str(value).encode("utf-8", errors="replace")
 
 
 def _timestamp_iso(value) -> str:
@@ -404,6 +445,99 @@ def _decode_body(raw: bytes, headers) -> tuple[str, bool]:
         return payload.decode(encoding, errors="replace"), truncated
     except Exception:
         return payload.decode("utf-8", errors="replace"), truncated
+
+
+def _format_body_text(text: str, headers: Iterable[tuple[str, str]]) -> str:
+    if not text:
+        return ""
+    content_type = _header_value(headers, "content-type").lower()
+    stripped = text.strip()
+    if not stripped:
+        return text
+    if _looks_like_json(content_type, stripped):
+        formatted = _format_json_text(stripped)
+        if formatted:
+            return formatted
+    if _looks_like_form(content_type):
+        formatted = _format_form_text(stripped)
+        if formatted:
+            return formatted
+    if _looks_like_xml(content_type, stripped):
+        formatted = _format_xml_text(stripped)
+        if formatted:
+            return formatted
+    return text
+
+
+def _body_params(text: str, headers: Iterable[tuple[str, str]]) -> list[tuple[str, str]]:
+    if not text:
+        return []
+    content_type = _header_value(headers, "content-type").lower()
+    stripped = text.strip()
+    if _looks_like_form(content_type):
+        return [(str(name), str(value)) for name, value in parse_qsl(stripped, keep_blank_values=True)]
+    if _looks_like_json(content_type, stripped):
+        try:
+            data = json.loads(stripped)
+        except Exception:
+            return []
+        return _flatten_json_params(data)
+    return []
+
+
+def _looks_like_json(content_type: str, text: str) -> bool:
+    return "json" in content_type or text.startswith("{") or text.startswith("[")
+
+
+def _looks_like_form(content_type: str) -> bool:
+    return "application/x-www-form-urlencoded" in content_type
+
+
+def _looks_like_xml(content_type: str, text: str) -> bool:
+    return "xml" in content_type or text.startswith("<?xml") or (text.startswith("<") and text.endswith(">"))
+
+
+def _format_json_text(text: str) -> str:
+    try:
+        return json.dumps(json.loads(text), ensure_ascii=False, indent=2)
+    except Exception:
+        return ""
+
+
+def _format_form_text(text: str) -> str:
+    try:
+        items = parse_qsl(text, keep_blank_values=True)
+    except Exception:
+        return ""
+    if not items:
+        return ""
+    width = max(len(name) for name, _ in items)
+    return "\n".join(f"{name.ljust(width)} = {value}" for name, value in items)
+
+
+def _format_xml_text(text: str) -> str:
+    try:
+        parsed = minidom.parseString(text.encode("utf-8"))
+        pretty = parsed.toprettyxml(indent="  ")
+    except Exception:
+        return ""
+    return "\n".join(line for line in pretty.splitlines() if line.strip())
+
+
+def _flatten_json_params(value: object, prefix: str = "") -> list[tuple[str, str]]:
+    if isinstance(value, Mapping):
+        items: list[tuple[str, str]] = []
+        for key, item in value.items():
+            name = f"{prefix}.{key}" if prefix else str(key)
+            items.extend(_flatten_json_params(item, name))
+        return items
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        items = []
+        for index, item in enumerate(value):
+            name = f"{prefix}[{index}]" if prefix else f"[{index}]"
+            items.extend(_flatten_json_params(item, name))
+        return items
+    return [(prefix or "$", "" if value is None else str(value))]
 
 
 def _headers_dict(headers: Iterable[tuple[str, str]]) -> dict[str, str]:
@@ -740,7 +874,9 @@ class HttpCaptureService:
             return True, str(target)
         if flow_obj is None or getattr(flow_obj, "response", None) is None:
             return False, "未找到响应正文"
-        raw = getattr(flow_obj.response, "raw_content", None) or b""
+        raw = _message_content(flow_obj.response)
+        if not raw:
+            return False, "响应正文为空"
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(raw)
@@ -800,7 +936,7 @@ class HttpCaptureService:
         parts = ["curl", "-X", _curl_arg(request.method)]
         for name, value in _headers_list(request.headers):
             parts.extend(["-H", _curl_arg(f"{name}: {value}")])
-        raw = getattr(request, "raw_content", None) or b""
+        raw = _message_content(request)
         if raw:
             body, _ = _decode_body(raw, request.headers)
             parts.extend(["--data-raw", _curl_arg(body)])
@@ -826,7 +962,7 @@ class HttpCaptureService:
             method = getattr(request, "method", "GET") or "GET"
             url = getattr(request, "pretty_url", "") or ""
             headers = _headers_dict(_headers_list(request.headers))
-            body = getattr(request, "raw_content", None) or b""
+            body = _message_content(request)
         elif override is not None and override.request_url:
             method = override.request_method or "GET"
             url = override.request_url
