@@ -21,7 +21,7 @@ jobs:
             os: macos-14
             artifact: release-macos-arm64
           - name: macOS-x64
-            os: macos-13
+            os: macos-latest
             artifact: release-macos-x64
           - name: Windows
             os: windows-latest
