@@ -175,7 +175,7 @@ src/
 - `plugins/plugin_manager.py`：按需加载插件 Runtime。
 - `plugins/session_manager.py`：管理插件会话和 QML 上下文对象。
 - `plugins/background_manager.py`：启动/停止后台插件。
-- `hotkey/win_hotkey_manager.py`：Windows 全局快捷键。
+- `hotkey_coordinator.py`：协调启动器、剪切板、插件的全局热键注册和重注册。
 - `tray/system_tray_manager.py`：系统托盘。
 
 ### `src/features`
@@ -977,33 +977,23 @@ self._clipboard.dataChanged.connect(self._on_change)
 
 ### 全局热键
 
-文件：`src/app/hotkey/win_hotkey_manager.py`
+文件：`src/app/hotkey_coordinator.py`（协调层），各平台实现在 `src/app/platform/<platform>/hotkey.py`
 
-项目通过 Windows API `RegisterHotKey` 注册快捷键：
+项目通过平台 API 注册全局快捷键。以 Windows 为例，`platform/windows/hotkey.py` 使用 `RegisterHotKey`：
 
 ```python
 user32.RegisterHotKey(...)
 ```
 
-当系统收到热键消息时，`WinHotkeyFilter` 捕获 `WM_HOTKEY`，然后发出 Qt 信号：
+当系统收到热键消息时，`WinHotkeyFilter` 捕获 `WM_HOTKEY`，然后发出 Qt 信号。
 
-```python
-self._manager.hotkeyPressed.emit()
-```
-
-在 `main.py` 中：
-
-```python
-hotkey_mgr.hotkeyPressed.connect(toggle_launcher)
-```
-
-所以按 `Alt+Space` 的链路是：
+`HotkeyCoordinator` 在应用启动时组装并注册所有热键。`Alt+Space` 的链路是：
 
 ```text
-Windows WM_HOTKEY
-  -> WinHotkeyFilter
-  -> WinHotkeyManager.hotkeyPressed
-  -> main.py toggle_launcher()
+系统热键事件
+  -> platform/windows/hotkey.py 或 platform/macos/hotkey.py
+  -> HotkeyCoordinator
+  -> launcher_runtime_coordinator.py toggle_launcher()
   -> QML Window show/hide
 ```
 
@@ -1317,9 +1307,8 @@ function onJsonProcessed(text, errorText) {
 
 可以开启热重载：
 
-```powershell
-$env:PY_DESKTOP_QML_HOT_RELOAD = "1"
-uv run app
+```bash
+PY_DESKTOP_QML_HOT_RELOAD=1 uv run app
 ```
 
 热重载逻辑在 `QmlHotReloader` 中。它监听 `.qml` 文件变化并重新加载根 QML。

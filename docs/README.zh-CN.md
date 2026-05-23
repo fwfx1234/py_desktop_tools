@@ -18,12 +18,10 @@
 
 - [项目设计文档](./project-design.zh-CN.md)：项目主设计文档。
 - [插件开发文档](./plugin-development.zh-CN.md)：插件开发教程、API 参考和工程规范。
-- [快速启动插件实现计划](./quick-launch-plugin-plan.zh-CN.md)：快速启动项目与脚本动作插件的阶段性实现方案。
 - [UI Design System](../design-system/desktop-tools/MASTER.md)：桌面工具 UI 视觉和组件规范。
 
 ## 归档与执行记录
 
-- [架构复杂度收敛调整文档](./architecture-complexity-adjustment-plan.zh-CN.md)：已归档，只保留当前设计文档入口和历史说明。
 - [Coordinator 去中心化重构执行文档](./coordinator-redesign-execution-plan.zh-CN.md)：本次移除旧 coordinator 文件的执行记录；后续维护以项目设计文档为准。
 
 ## 构建与验证
@@ -39,20 +37,25 @@ uv run python -m compileall src
 uv run pytest
 ```
 
-Windows / 历史辅助 smoke 脚本位于 `scripts/`，保留用于补充验证，但不作为当前首选流程：
+Smoke 测试：
 
-```powershell
-scripts\smoke_compile.ps1
-scripts\smoke_import.ps1
-scripts\smoke_plugin_manifests.ps1
-scripts\smoke_storage.ps1
-scripts\smoke_tests.ps1
+```bash
+uv run python -m compileall src
+uv run pytest -v -m "not slow"
 ```
 
-独立应用构建：
+构建：
 
 ```bash
 uv run build
+
+# macOS
+bash tools/build_macos.sh
+```
+
+```powershell
+# Windows (PowerShell)
+tools\build_windows.ps1
 ```
 
 ## 文档维护规则
