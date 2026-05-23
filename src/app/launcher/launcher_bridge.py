@@ -214,6 +214,10 @@ class LauncherBridge(QObject):
     def checkAppIndex(self) -> None:
         self._command_service.check_app_index_changes()
 
+    @Slot()
+    def refreshPlugins(self) -> None:
+        self.performSearch(self._last_query)
+
     @Slot(str, str, str)
     def activatePluginListItemAction(
         self,
@@ -259,6 +263,6 @@ class LauncherBridge(QObject):
         try:
             item = latest_item()
         except Exception as exc:
-            self._log.warning("launcher.clipboard_latest_failed", "读取最新剪切板记录失败", error=str(exc), traceId=self._trace_id)
+            self._log.warning("launcher.clipboard_latest_failed", "读取最新剪贴板记录失败", error=str(exc), traceId=self._trace_id)
             return None
         return item if isinstance(item, dict) else None

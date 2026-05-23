@@ -9,19 +9,25 @@ ComboBox {
     property int cornerRadius: 6
     property bool compact: false
     property color fillColor: control.dark
-        ? Theme.token("color-bg-subtle", true)
+        ? Theme.token("color-nav-icon-idle-bg", true)
         : Theme.token("color-bg-surface", false)
     property color hoverFillColor: control.dark
-        ? Theme.token("color-bg-subtle-2", true)
-        : Theme.token("color-bg-subtle", false)
+        ? Theme.token("color-bg-subtle", true)
+        : Theme.token("color-bg-subtle-2", false)
     property color textColor: Theme.token("color-text-primary", control.dark)
     property color mutedColor: Theme.token("color-text-regular", control.dark)
     property color accentColor: "#0A84FF"
+    property color borderColor: control.dark
+        ? Qt.rgba(1, 1, 1, 0.18)
+        : Qt.rgba(0, 0, 0, 0.20)
+    property color hoverBorderColor: control.dark
+        ? Qt.rgba(1, 1, 1, 0.28)
+        : Qt.rgba(0, 0, 0, 0.28)
     property var itemColorFn: null
 
     implicitHeight: 28
     leftPadding: 10
-    rightPadding: control.compact ? 22 : 32
+    rightPadding: control.compact ? 24 : 30
     hoverEnabled: true
     font.family: Theme.fontFamily.ui
     font.pixelSize: 13
@@ -44,72 +50,22 @@ ComboBox {
         border.width: 1
         border.color: control.activeFocus
             ? control.accentColor
-            : (control.dark ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.18))
+            : (control.hovered ? control.hoverBorderColor : control.borderColor)
         antialiasing: true
     }
 
     indicator: Item {
-        width: control.compact ? 14 : 20
-        height: control.height - 6
-        x: control.width - width - 4
-        y: 3
+        width: 16
+        height: 16
+        x: control.width - width - (control.compact ? 8 : 10)
+        y: Math.round((control.height - height) / 2)
 
-        Rectangle {
-            id: accentBox
-            visible: !control.compact
+        UiIcon {
             anchors.fill: parent
-            radius: 4
-            color: control.accentColor
-            opacity: control.down ? 0.85 : 1.0
-        }
-
-        Canvas {
-            id: chevron
-            anchors.fill: parent
-            contextType: "2d"
-
-            Connections {
-                target: control
-                function onPressedChanged() { chevron.requestPaint() }
-                function onHoveredChanged() { chevron.requestPaint() }
-            }
-
-            onPaint: {
-                var ctx = context
-                ctx.reset()
-                ctx.lineWidth = 1.5
-                ctx.lineCap = "round"
-                ctx.lineJoin = "round"
-                ctx.strokeStyle = control.compact ? control.mutedColor : "#FFFFFF"
-
-                var w = width
-                var h = height
-                var cx = w / 2
-                if (control.compact) {
-                    var pad = 3
-                    ctx.beginPath()
-                    ctx.moveTo(pad, h / 2 - 2)
-                    ctx.lineTo(cx, h / 2 + 3)
-                    ctx.lineTo(w - pad, h / 2 - 2)
-                    ctx.stroke()
-                    return
-                }
-                var armX = 4
-                var topY = h / 2 - 5
-                var midY1 = h / 2 - 2
-                var bottomY = h / 2 + 5
-                var midY2 = h / 2 + 2
-                ctx.beginPath()
-                ctx.moveTo(armX, midY1)
-                ctx.lineTo(cx, topY)
-                ctx.lineTo(w - armX, midY1)
-                ctx.stroke()
-                ctx.beginPath()
-                ctx.moveTo(armX, midY2)
-                ctx.lineTo(cx, bottomY)
-                ctx.lineTo(w - armX, midY2)
-                ctx.stroke()
-            }
+            useQta: true
+            name: "mdi6.chevron-down"
+            color: control.mutedColor
+            iconSize: 16
         }
     }
 

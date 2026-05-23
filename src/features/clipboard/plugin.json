@@ -1,8 +1,8 @@
 {
   "id": "clipboard",
-  "name": "剪切板历史",
+  "name": "剪贴板历史",
   "version": "1.0.0",
-  "description": "搜索剪切板历史，管理记录类型、过滤规则和快捷键",
+  "description": "搜索剪贴板历史，管理记录类型、过滤规则和快捷键",
   "icon": "qta:mdi6.clipboard-text-outline",
   "entrypoint": "runtime:create_runtime",
   "qmlPage": "ClipboardWindowPage.qml",
@@ -18,10 +18,10 @@
   "commands": [
     {
       "id": "clipboard.open",
-      "title": "剪切板历史",
-      "subtitle": "在启动器内搜索、预览和管理剪切板历史",
+      "title": "剪贴板历史",
+      "subtitle": "在启动器内搜索、预览和管理剪贴板历史",
       "icon": "qta:mdi6.clipboard-text-outline",
-      "keywords": ["剪切板", "clipboard", "复制", "copy", "粘贴", "paste", "历史"],
+      "keywords": ["剪贴板", "clipboard", "复制", "copy", "粘贴", "paste", "历史"],
       "prefixes": ["clip", "clipboard"],
       "launchMode": "window",
       "matchers": [

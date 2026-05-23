@@ -8,7 +8,7 @@
 
 本项目是一个类 uTools 的桌面工具箱：
 
-- Python 负责启动应用、业务逻辑、插件管理、数据库、剪切板、热键、系统托盘。
+- Python 负责启动应用、业务逻辑、插件管理、数据库、剪贴板、热键、系统托盘。
 - QML 负责界面，包括启动器窗口、插件页面、通用 UI 组件。
 - PySide6 是 Python 和 Qt/QML 之间的桥。
 - 插件通过 `plugin.json` 声明自己，只有被启动时才加载真正的 Python Runtime 和 QML 页面。
@@ -49,8 +49,8 @@ src/features/
 - `pyside6-addons`：额外 Qt 模块。
 - `qtawesome`：图标库，让 QML/Python 可以使用 FontAwesome、Material Design Icons 等图标。
 - `qrcode`、`Pillow`、`opencv-python`：二维码生成、图片处理和二维码扫描。
-- `pyperclip`：文本剪切板读写。
-- `requests`、`websocket-client`：API 测试插件的网络能力。
+- `pyperclip`：文本剪贴板读写。
+- `requests`、`websocket-client`：API 调试器插件的网络能力。
 - `PyYAML`：读取 OpenAPI/YAML 等结构化数据。
 - `pypinyin`：中文命令的拼音搜索。
 - `pylnk3`：Windows 快捷方式相关能力。
@@ -93,7 +93,7 @@ Python QObject/ViewModel + QML 界面
 - MVVM：QML 是 View，Python 的 `QObject` 是 ViewModel，纯 Python 类是 Service。
 - 插件化：每个功能目录通过 `plugin.json` 声明自己。
 - 懒加载：普通插件不在应用启动时创建 ViewModel，只有用户打开时才创建。
-- 后台插件：剪切板插件应用启动后常驻监听，但 UI 仍然懒加载。
+- 后台插件：剪贴板插件应用启动后常驻监听，但 UI 仍然懒加载。
 
 ## 2. 如何运行和验证
 
@@ -111,7 +111,7 @@ Alt+Space
 
 唤起启动器窗口。
 
-剪切板历史默认快捷键：
+剪贴板历史默认快捷键：
 
 ```text
 Alt+V
@@ -144,15 +144,17 @@ src/
     tray/
     ui/
   features/
-    api_test/
+    api_debugger/
     app_launcher/
     clipboard/
-    download/
+    download_manager/
     image_compress/
     json_parser/
-    packet_capture/
-    qr/
-    system/
+    http_capture/
+    ftp_sftp_ssh_client/
+    qr_code/
+    system_settings/
+    about/
 ```
 
 ### `src/app`
@@ -232,7 +234,7 @@ def main() -> int:
 
 ### `QApplication`
 
-`QApplication` 是 Qt 应用对象。所有窗口、事件、剪切板、托盘都依赖它。
+`QApplication` 是 Qt 应用对象。所有窗口、事件、剪贴板、托盘都依赖它。
 
 本项目设置了：
 
@@ -484,7 +486,7 @@ text + json
 https://example.com
 ```
 
-二维码插件和 API 测试插件都会因为 `url` matcher 获得推荐分。
+二维码插件和 API 调试器插件都会因为 `url` matcher 获得推荐分。
 
 ### 前缀命令
 
@@ -564,8 +566,8 @@ json {...}     = 用前缀明确选择插件
 | --- | --- | --- |
 | `none` | 无界面，执行后结束 | 重启应用 |
 | `list` | 使用启动器通用列表 | 软件快速启动 |
-| `inline_view` | 嵌入启动器窗口 | JSON、二维码、剪切板、图片压缩 |
-| `window` | 独立窗口 | API 测试、下载工具 |
+| `inline_view` | 嵌入启动器窗口 | JSON、二维码、剪贴板、图片压缩 |
+| `window` | 独立窗口 | API 调试器、下载管理器 |
 
 ### 插件激活方式
 
@@ -576,7 +578,7 @@ activation = 插件什么时候加载 Runtime
 launchMode = 插件启动后以什么 UI 形式展示
 ```
 
-例如剪切板：
+例如剪贴板：
 
 ```json
 "activation": "background",
@@ -585,8 +587,8 @@ launchMode = 插件启动后以什么 UI 形式展示
 
 意思是：
 
-- 应用启动后加载后台 Runtime，用来监听系统剪切板。
-- 用户打开剪切板历史时，再创建内嵌 UI。
+- 应用启动后加载后台 Runtime，用来监听系统剪贴板。
+- 用户打开剪贴板历史时，再创建内嵌 UI。
 
 ## 9. 插件 Runtime 和 Session
 
@@ -716,7 +718,7 @@ Connections {
 以二维码插件为例：
 
 ```text
-src/features/qr/
+src/features/qr_code/
   QrCodePage.qml
   view_model.py
   service.py
@@ -850,7 +852,7 @@ win = component.createWithInitialProperties(
 )
 ```
 
-API 测试插件的 Manifest 中声明了窗口大小：
+API 调试器插件的 Manifest 中声明了窗口大小：
 
 ```json
 "window": {
@@ -879,9 +881,9 @@ Loader {
   -> 插件自己的 QML 页面
 ```
 
-## 15. background 插件：剪切板案例
+## 15. background 插件：剪贴板案例
 
-剪切板插件是本项目最适合深入学习的复杂案例。
+剪贴板插件是本项目最适合深入学习的复杂案例。
 
 文件：
 
@@ -893,9 +895,9 @@ src/features/clipboard/view_model.py
 src/features/clipboard/ClipboardWindowPage.qml
 ```
 
-### 为什么剪切板是后台插件
+### 为什么剪贴板是后台插件
 
-剪切板历史必须在用户没有打开窗口时也持续记录，所以它需要应用启动后开始监听系统剪切板。
+剪贴板历史必须在用户没有打开窗口时也持续记录，所以它需要应用启动后开始监听系统剪贴板。
 
 但是 UI 不应该一启动就加载，否则浪费资源。
 
@@ -903,10 +905,10 @@ src/features/clipboard/ClipboardWindowPage.qml
 
 ```text
 ClipboardBackgroundService
-  常驻后台，监听剪切板，写入数据库
+  常驻后台，监听剪贴板，写入数据库
 
 ClipboardWindowViewModel
-  用户打开剪切板历史时才创建，读取后台服务的数据给 QML 展示
+  用户打开剪贴板历史时才创建，读取后台服务的数据给 QML 展示
 ```
 
 ### 后台启动流程
@@ -926,7 +928,7 @@ if callable(start):
     start(self._plugin_context)
 ```
 
-剪切板 Runtime：
+剪贴板 Runtime：
 
 ```python
 def on_background_start(self, ctx: PluginContext) -> None:
@@ -941,9 +943,9 @@ def on_background_start(self, ctx: PluginContext) -> None:
 ctx.services.clipboard
 ```
 
-其他插件也可以通过这个服务读取最新剪切板内容。图片压缩插件就会用它读取剪切板里的图片文件。
+其他插件也可以通过这个服务读取最新剪贴板内容。图片压缩插件就会用它读取剪贴板里的图片文件。
 
-### 剪切板监听
+### 剪贴板监听
 
 文件：`src/features/clipboard/service.py`
 
@@ -954,7 +956,7 @@ self._clipboard = QApplication.clipboard()
 self._clipboard.dataChanged.connect(self._on_change)
 ```
 
-当系统剪切板变化时，Qt 发出 `dataChanged` 信号，`ClipboardMonitor._on_change()` 会判断内容类型：
+当系统剪贴板变化时，Qt 发出 `dataChanged` 信号，`ClipboardMonitor._on_change()` 会判断内容类型：
 
 - 文件 URL
 - 图片
@@ -967,7 +969,7 @@ self._clipboard.dataChanged.connect(self._on_change)
 `ClipboardHistoryStore` 使用 `sqlite3` 管理：
 
 - `clipboard_history`：历史记录。
-- `clipboard_settings`：剪切板配置。
+- `clipboard_settings`：剪贴板配置。
 
 这种持久化服务属于 Service 层，不应该写在 QML 里。
 
@@ -1326,7 +1328,7 @@ uv run app
 
 如果 ViewModel 连接了信号、启动了 Timer、打开了数据库或线程，记得在 `close()` 或 `deleteLater()` 中清理。
 
-剪切板 ViewModel 是好例子：
+剪贴板 ViewModel 是好例子：
 
 ```python
 def close(self) -> None:
@@ -1350,7 +1352,7 @@ Python 适合：
 - 数据库
 - 复杂算法
 - 系统 API
-- 剪切板、热键、托盘
+- 剪贴板、热键、托盘
 
 ## 21. 推荐学习顺序
 
@@ -1362,10 +1364,10 @@ Python 适合：
 4. `src/app/launcher/LauncherWindow.qml`：看搜索框和插件承载。
 5. `src/app/launcher/launcher_bridge.py`：看 QML 如何调用 Python。
 6. `src/features/json_parser/`：学习最小完整插件。
-7. `src/features/qr/`：学习 ViewModel + Service 分层。
-8. `src/features/image_compress/`：学习插件如何读取输入和剪切板上下文。
-9. `src/features/clipboard/`：学习后台插件、SQLite、剪切板监听。
-10. `src/features/api_test/`：学习复杂窗口插件和更大的业务服务。
+7. `src/features/qr_code/`：学习 ViewModel + Service 分层。
+8. `src/features/image_compress/`：学习插件如何读取输入和剪贴板上下文。
+9. `src/features/clipboard/`：学习后台插件、SQLite、剪贴板监听。
+10. `src/features/api_debugger/`：学习复杂窗口插件和更大的业务服务。
 11. `docs/project-design.zh-CN.md`：理解当前架构边界、插件生命周期、平台层、存储、日志和并发约定。
 
 每读一个插件，都回答这 6 个问题：

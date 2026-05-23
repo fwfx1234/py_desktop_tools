@@ -21,7 +21,7 @@
       "icon": "json",
       "keywords": ["json", "格式化", "format", "parse", "解析", "query"],
       "prefixes": ["json", "jq"],
-      "launchMode": "window",
+      "launchMode": "inline_view",
       "matchers": [
         {"source": "input", "kind": "json", "boost": 180},
         {"source": "clipboard", "kind": "json", "boost": 100}

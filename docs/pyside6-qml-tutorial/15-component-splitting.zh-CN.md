@@ -1,13 +1,13 @@
 # 第 15 章：QML 组件拆分与文件组织
 
-本章以 api_test 插件从 2900 行拆分到 508 行的真实过程，讲解 QML 组件化的全部套路。
+本章以 api_debugger 插件从 2900 行拆分到 508 行的真实过程，讲解 QML 组件化的全部套路。
 
 ---
 
 ## 15.1 拆分前的典型症状
 
 ```qml
-// ApiTestPage.qml — 2903 行
+// ApiDebuggerPage.qml — 2903 行
 Item {
     id: root
     property var queryParams: [...]       // ~40 个属性
@@ -60,7 +60,7 @@ Item {
 | **模式 2**：按功能分文件 | 大块独立 UI 区域 → 独立文件 | 响应面板、Body Tab | `ApiResponsePanel.qml`、`ApiBodyTab.qml` |
 | **模式 3**：纯函数提取 | 不依赖 QML 上下文的 JS → `.pragma library` | 树操作、序列化 | `api_utils.js` |
 | **模式 4**：业务逻辑迁移 | 依赖 QML 上下文的逻辑 → Python ViewModel `@Slot` | sendRequest、persistTab | `view_model.py` |
-| **模式 5**：数据状态上移 | QML root property → ViewModel `@Property` | queryParams、environments | `ApiTestViewModel` |
+| **模式 5**：数据状态上移 | QML root property → ViewModel `@Property` | queryParams、environments | `ApiDebuggerViewModel` |
 
 ---
 
@@ -124,11 +124,11 @@ ColumnLayout {
 
 ```qml
 KvTableSection {
-    rows: apiTestVm.queryParams
+    rows: apiDebuggerVm.queryParams
     showTypeSelector: true
     keyWidth: 220; descWidth: 180
     dark: root.dark
-    onRowKeyCommitted: (i, k) => apiTestVm.editSectionRowKey("query", i, k)
+    onRowKeyCommitted: (i, k) => apiDebuggerVm.editSectionRowKey("query", i, k)
 }
 ```
 
@@ -149,7 +149,7 @@ KvTableSection {
 ### 拆分前：响应面板内联 ~250 行
 
 ```qml
-// ApiTestPage.qml 中
+// ApiDebuggerPage.qml 中
 ColumnLayout {
     // 响应标题栏 — 50 行
     Rectangle { RowLayout { Label { }; Switch { }; Switch { } } }
@@ -200,8 +200,8 @@ ApiResponsePanel {
     anchors.left: parent.left; anchors.right: parent.right
     anchors.top: verticalSplitter.bottom; anchors.bottom: parent.bottom
     dark: root.dark; panelBg: root.panelBg
-    mockMode: apiTestVm.mockMode
-    onMockModeToggled: apiTestVm.mockMode = checked
+    mockMode: apiDebuggerVm.mockMode
+    onMockModeToggled: apiDebuggerVm.mockMode = checked
 }
 ```
 
@@ -240,7 +240,7 @@ function buildKvText(items) {
 `.pragma library` 中的函数：
 - ✅ 可以调用彼此
 - ✅ 可以是纯 JS：字符串、数组、对象操作
-- ❌ 不能访问 QML 对象（`root`、`apiTestVm`、QML 元素 ID）
+- ❌ 不能访问 QML 对象（`root`、`apiDebuggerVm`、QML 元素 ID）
 - ❌ 不能使用 `Theme.token()`
 - ❌ 不能修改传入的对象（但可以创建新对象返回）
 
@@ -256,8 +256,8 @@ function nodeByIdInTree(tree, nodeId) { return ... }
 // ❌ 不能移——读取 QML 上下文
 function currentTabId() { return root.endpointTabs[root.currentEndpointTab].id }
 
-// ❌ 不能移——调用 apiTestVm
-function replaceCollectionTree(tree) { apiTestVm.saveCollectionTree(root.collectionTree) }
+// ❌ 不能移——调用 apiDebuggerVm
+function replaceCollectionTree(tree) { apiDebuggerVm.saveCollectionTree(root.collectionTree) }
 ```
 
 ### 使用
@@ -298,18 +298,18 @@ function sendCurrent() {
     if (!currentBodyModeIndexIsFile(...)) { /* 5 行 */ }
     var cookieLine = ApiUtils.buildCookieText(cookieRows).trim()
     if (cookieLine.length > 0) { /* 4 行 */ }
-    if (currentBodyModeIndexIsFile(...)) { apiTestVm.sendApiFile(...) }
-    else { apiTestVm.sendApi(...) }
+    if (currentBodyModeIndexIsFile(...)) { apiDebuggerVm.sendApiFile(...) }
+    else { apiDebuggerVm.sendApi(...) }
 }
 
 // 现在：数据组装在 QML，逻辑在 Python
 function sendCurrent() {
-    apiTestVm.sendRequest({
+    apiDebuggerVm.sendRequest({
         method: requestActionBar.getMethodText(),
         url: requestActionBar.getUrlText(),
-        paramsText: ApiUtils.buildKvText(apiTestVm.pathParams) + "\n" +
-                    ApiUtils.buildKvText(apiTestVm.queryParams),
-        headersText: ApiUtils.buildHeaderText(apiTestVm.headersRows),
+        paramsText: ApiUtils.buildKvText(apiDebuggerVm.pathParams) + "\n" +
+                    ApiUtils.buildKvText(apiDebuggerVm.queryParams),
+        headersText: ApiUtils.buildHeaderText(apiDebuggerVm.headersRows),
         bodyText: bodyTextForRequest(),
         // ... 纯数据组装
     })
@@ -325,21 +325,21 @@ function sendCurrent() {
 | 组件类型 | 通信方式 | 例子 |
 |---------|---------|------|
 | 通用 UI 组件 | property 下传 + signal 上抛 | `KvTableSection` |
-| 业务组件（不复用） | 直接访问 `apiTestVm` 和 `root.xxx` | `ApiBodyTab` |
+| 业务组件（不复用） | 直接访问 `apiDebuggerVm` 和 `root.xxx` | `ApiBodyTab` |
 | 函数引用传递 | `property var methodColorFn: null` | `ApiEndpointTabsBar` |
 
 ```qml
 // 方式 1: property + signal（通用组件）
 KvTableSection {
-    rows: apiTestVm.queryParams
-    onRowKeyCommitted: (i, k) => apiTestVm.editSectionRowKey("query", i, k)
+    rows: apiDebuggerVm.queryParams
+    onRowKeyCommitted: (i, k) => apiDebuggerVm.editSectionRowKey("query", i, k)
 }
 
 // 方式 2: 直接访问 ViewModel（业务组件）
 ApiBodyTab {
-    bodyModes: apiTestVm.bodyModes     // 属性下传
-    currentBodyMode: apiTestVm.currentBodyMode
-    onBodyModeClicked: index => apiTestVm.setCurrentBodyMode(index)
+    bodyModes: apiDebuggerVm.bodyModes     // 属性下传
+    currentBodyMode: apiDebuggerVm.currentBodyMode
+    onBodyModeClicked: index => apiDebuggerVm.setCurrentBodyMode(index)
 }
 
 // 方式 3: 函数引用传递
@@ -380,10 +380,10 @@ src/app/ui/                    // 跨插件通用组件
 
 ---
 
-## 15.9 api_test 拆分全景
+## 15.9 api_debugger 拆分全景
 
 ```
-拆分前：ApiTestPage.qml (2903 行)
+拆分前：ApiDebuggerPage.qml (2903 行)
   ├── 40 个 root 属性
   ├── 80 个 JS 函数（~1400 行）
   └── 视觉树（~1450 行）
@@ -393,7 +393,7 @@ src/app/ui/                    // 跨插件通用组件
         └── 5 个 Popup/Dialog（60 行）
 
 拆分后：
-  ApiTestPage.qml (508 行)          ← 纯 View
+  ApiDebuggerPage.qml (508 行)          ← 纯 View
   api_utils.js (464 行)             ← 纯函数
   view_model.py (969 行)            ← 全部业务逻辑
   components/
@@ -419,7 +419,7 @@ src/app/ui/                    // 跨插件通用组件
 
 ## 15.10 实战练习
 
-1. 在 api_test 中找一个还能拆的块（30-50 行），抽成一个新组件
+1. 在 api_debugger 中找一个还能拆的块（30-50 行），抽成一个新组件
 2. 检查新组件：是否有硬编码的 `root.xxx` 引用？如果有，改成 property 传递
 3. 验证 QML 能独立加载：`QQmlComponent(engine, QUrl.fromLocalFile("yourComponent.qml"))`
-4. 看看 `EnvManagerDialog.qml`，思考为什么它在 `api_test/` 而不在 `components/`？
+4. 看看 `EnvManagerDialog.qml`，思考为什么它在 `api_debugger/` 而不在 `components/`？

@@ -72,6 +72,9 @@ class CommandService:
     def all_plugin_items(self) -> list[dict]:
         return self._plugin_items("", build_launcher_context("", self.known_prefixes()))
 
+    def replace_manifests(self, manifests: list[PluginManifest]) -> None:
+        self._manifests = sorted(manifests, key=lambda item: item.order)
+
     def on_app_scan_completed(self, callback: Callable[[], None]) -> None:
         self._app_index.on_scan_completed(callback)
 

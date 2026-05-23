@@ -332,9 +332,9 @@ class ClipboardWindowViewModel(QObject):
         if db_id is None:
             return
         if self._service.copy_item_by_id(db_id):
-            self.messageChanged.emit("已写回系统剪切板")
+            self.messageChanged.emit("已写回系统剪贴板")
         else:
-            self.messageChanged.emit("写入剪切板失败")
+            self.messageChanged.emit("写入剪贴板失败")
 
     @Slot(str)
     def togglePin(self, item_id: str) -> None:
@@ -358,7 +358,7 @@ class ClipboardWindowViewModel(QObject):
     def clearHistory(self) -> None:
         if self._service.clear_all():
             self._history_model.clear()
-        self.messageChanged.emit("剪切板历史已清空")
+        self.messageChanged.emit("剪贴板历史已清空")
 
     @Slot()
     def clearUnpinned(self) -> None:
@@ -412,7 +412,7 @@ class ClipboardWindowViewModel(QObject):
             self.messageChanged.emit("快捷键格式无效")
             return
         self._service.set_config_value("hotkey", hotkey)
-        self.messageChanged.emit(f"剪切板快捷键已保存为 {hotkey}")
+        self.messageChanged.emit(f"剪贴板快捷键已保存为 {hotkey}")
 
     def dispose(self) -> None:
         self._service.remove_history_listener(self._on_history_changed)

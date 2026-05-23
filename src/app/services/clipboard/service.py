@@ -35,10 +35,10 @@ class ClipboardService:
         try:
             self._backend.start(self._handle_backend_change)
         except Exception as exc:
-            self._log.warning("clipboard.backend.start_failed", "剪切板 backend 启动失败", error=str(exc))
+            self._log.warning("clipboard.backend.start_failed", "剪贴板 backend 启动失败", error=str(exc))
             raise
         self._started = True
-        self._log.debug("clipboard.service.start", "剪切板服务启动", backend=type(self._backend).__name__)
+        self._log.debug("clipboard.service.start", "剪贴板服务启动", backend=type(self._backend).__name__)
 
     def add_history_listener(self, callback: Callable[[], None]) -> None:
         with self._listener_lock:
@@ -186,7 +186,7 @@ class ClipboardService:
         try:
             self._backend.write_text(text)
         except Exception as exc:
-            self._log.warning("clipboard.copy_text_failed", "剪切板文本写入失败", error=str(exc), textLength=len(text or ""))
+            self._log.warning("clipboard.copy_text_failed", "剪贴板文本写入失败", error=str(exc), textLength=len(text or ""))
             return False
         return True
 
@@ -206,7 +206,7 @@ class ClipboardService:
             else:
                 return False
         except Exception as exc:
-            self._log.warning("clipboard.copy_item_failed", "剪切板记录写回失败", itemType=str(item_type), error=str(exc))
+            self._log.warning("clipboard.copy_item_failed", "剪贴板记录写回失败", itemType=str(item_type), error=str(exc))
             return False
         return True
 
@@ -223,19 +223,19 @@ class ClipboardService:
         try:
             self._backend.stop()
         except Exception as exc:
-            self._log.warning("clipboard.backend.stop_failed", "剪切板 backend 停止失败", error=str(exc))
+            self._log.warning("clipboard.backend.stop_failed", "剪贴板 backend 停止失败", error=str(exc))
         self.store.close()
         self._started = False
-        self._log.debug("clipboard.service.stop", "剪切板服务停止")
+        self._log.debug("clipboard.service.stop", "剪贴板服务停止")
 
     def _handle_backend_change(self, draft) -> None:
         try:
             captured = self.store.capture_draft(draft)
         except Exception as exc:
-            self._log.warning("clipboard.capture_failed", "剪切板记录捕获失败", error=str(exc))
+            self._log.warning("clipboard.capture_failed", "剪贴板记录捕获失败", error=str(exc))
             return
         if captured:
-            self._log.debug("clipboard.capture", "剪切板记录已捕获", itemType=getattr(draft, "item_type", ""))
+            self._log.debug("clipboard.capture", "剪贴板记录已捕获", itemType=getattr(draft, "item_type", ""))
             self._notify_history_changed()
 
     def _notify_history_changed(self) -> None:

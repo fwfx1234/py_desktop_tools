@@ -30,6 +30,7 @@ build = [
 
 [project.scripts]
 app = "app.main:main"
+build = "app.build:main"
 
 [[tool.uv.index]]
 url = "https://mirrors.aliyun.com/pypi/simple/"

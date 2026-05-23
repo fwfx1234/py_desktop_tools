@@ -2,6 +2,7 @@
 # 始终使用中文交互
 # 系统是 macOS 开发环境，终端使用 zsh
 # 项目使用 uv 管理依赖、虚拟环境和运行命令
+# 使用 Codex 时，架构设计和执行计划优先由 5.5 模型完成，代码执行和落地修改优先由 5.4 模型完成
 
 PySide6 + QML desktop toolbox with a uTools-like launcher. The app stays in the tray/background and is opened by global hotkeys such as `Alt+Space`.
 
@@ -10,9 +11,10 @@ PySide6 + QML desktop toolbox with a uTools-like launcher. The app stays in the 
 ```bash
 uv sync                              # sync dependencies into .venv
 uv run app                           # run the app
+uv run build                         # package the app via PyInstaller
 uv add <pkg>                         # add a dependency
 uv run pytest                        # run the configured test suite
-uv run pytest tests/features/api_test # run the api-test focused tests
+uv run pytest tests/features/api_debugger # run the api-debugger focused tests
 uv run python -m compileall src      # quick Python syntax check
 ```
 
@@ -37,11 +39,13 @@ src/
   app/
     main.py                        # entry point: app.main:main
     app_runtime.py                 # Qt event-loop runtime and QML hot reload
-    app_bootstrap.py               # QML engine, services, plugin managers, coordinators
+    app_bootstrap.py               # QML engine, services, plugin managers, app services
     app_context.py                 # application lifecycle, startup scheduling, shutdown
+    application_controller.py      # launcher and plugin lifecycle application use cases
     launcher/                      # launcher window, plugin host window, QML bridge
     commands/                      # command search/ranking, app index, dynamic commands
     plugins/                       # manifest loading, runtime loading, sessions, background plugins
+    hotkeys/                       # global hotkey service and lifecycle
     platform/                      # PlatformServices and macos/windows/noop implementations
     services/                      # pure Python app-level services
     storage/                       # SQLite/dict storage helpers
@@ -57,7 +61,7 @@ src/
 Startup path:
 - `src/app/main.py:main()` configures logging, Qt style, fonts and `QApplication`.
 - `ApplicationRuntime.run()` builds the app, starts lifecycle hooks, optionally installs QML hot reload, then enters `qt_app.exec()`.
-- `ApplicationBootstrapper.build()` creates `QQmlApplicationEngine`, injects global QML context, loads manifests, assembles platform services, command services, plugin managers, session/surface/runtime coordinators, and tray coordinator.
+- `ApplicationBootstrapper.build()` creates `QQmlApplicationEngine`, injects global QML context, loads manifests, assembles platform services, command services, plugin managers, `ApplicationController`, `PluginHostService`, `HotkeyLifecycle`, and `TrayService`.
 - `ApplicationContext.start()` connects launcher signals, schedules hotkey registration, starts background plugins, shows tray, and starts app-index refresh.
 
 ## Plugin System
@@ -85,7 +89,7 @@ Supported command/manifest fields include:
 - `SimpleQmlRuntime` is the default helper for QML + ViewModel plugins and creates a `QmlPluginSession`.
 - `PluginSessionManager` owns active and retained sessions and injects session context objects into the root QML context.
 - Closing visible plugin UI usually suspends the session instead of destroying it. Retained sessions keep ViewModel/service state until the retention timer expires.
-- `PluginSurfaceCoordinator` owns inline/list/window host surfaces, independent plugin windows, macOS overlay activation helpers, and destruction when retention expires.
+- `PluginHostService` owns inline/list/window host surfaces, independent plugin windows, native activation helpers, and destruction when retention expires.
 - Plugins that need to clean up should expose `dispose()` on their ViewModel; `QmlPluginSession.close()` calls it before `deleteLater()`.
 - `launchMode: "none"` commands execute and then unload immediately.
 
@@ -117,7 +121,7 @@ Global QML context properties:
 - `app` -> `AppViewModel`
 - `launcherBridge` -> `LauncherBridge`
 
-Plugin ViewModels are injected only while a session is active or retained. The property name comes from manifest `contextProperty`, for example `apiTestVm`, `clipboardVm`, `jsonParserVm`, `qrVm`, or `systemSettingsVm`.
+Plugin ViewModels are injected only while a session is active or retained. The property name comes from manifest `contextProperty`, for example `apiDebuggerVm`, `clipboardVm`, `jsonParserVm`, `qrVm`, or `systemSettingsVm`.
 
 ## Platform And Services
 
@@ -138,9 +142,10 @@ Plugin ViewModels are injected only while a session is active or retained. The p
 
 - Pytest is configured in `pyproject.toml` with `testpaths = ["tests"]` and `pythonpath = ["src"]`.
 - Test markers include `unit`, `integration`, `contract`, and `slow`.
-- Current focused coverage is strongest around `api_test`, core architecture, and app indexing.
-- For feature changes, prefer focused tests near `tests/features/<feature>/` when practical.
-- If no focused test exists, at minimum run the closest relevant `uv run pytest ...` target plus `uv run python -m compileall src`.
+- Current focused coverage is strongest around `api_debugger`, core architecture, and app indexing.
+- Do not add test files for GUI/plugin interaction changes; verify them by running `uv run app` and directly opening the affected plugins.
+- For non-GUI pure Python logic changes, use existing focused tests when they already exist.
+- At minimum run `uv run python -m compileall src` for code changes, then start the app and manually exercise affected launcher/plugin paths.
 
 ## Key Conventions
 

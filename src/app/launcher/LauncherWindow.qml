@@ -41,8 +41,6 @@ Window {
     readonly property var safePluginListItems: hasBridge ? launcherBridge.pluginListItems : []
     readonly property var safeAllPlugins: hasBridge ? launcherBridge.allPlugins : []
 
-    // retainedInlineHosts caches QML host objects by plugin id. A host may be
-    // hidden for minutes and then shown again without destroying the page Loader.
     property var retainedInlineHosts: ({})
     property bool mixedMode: false
     property string mixedPluginId: ""
@@ -110,6 +108,16 @@ Window {
         target: hasBridge ? launcherBridge : null
 
         function onRetainedPluginExpired(pluginId) {
+            launcher.destroyInlineHost(pluginId);
+        }
+
+        function onPluginClosed(pluginId) {
+            if (hasBridge)
+                launcherBridge.setPluginListItems([]);
+            if (launcher.mixedPluginId === pluginId) {
+                launcher.exitMixedMode(false);
+                return;
+            }
             launcher.destroyInlineHost(pluginId);
         }
     }
@@ -190,23 +198,26 @@ Window {
 
     function ensureInlineHost(pluginId, qmlPage) {
         var host = retainedInlineHosts[pluginId];
-        if (host)
+        var pageUrl = pluginPageUrl(qmlPage);
+        if (host) {
+            if (host.pageUrl !== pageUrl)
+                host.pageUrl = pageUrl;
             return host;
+        }
         host = retainedInlineHostComponent.createObject(inlineHostStack, {
             "pluginId": pluginId,
-            "pageUrl": pluginPageUrl(qmlPage)
+            "pageUrl": pageUrl
         });
         retainedInlineHosts[pluginId] = host;
         return host;
     }
 
-    function hideAllInlineHosts() {
-        for (var key in retainedInlineHosts) {
-            if (!retainedInlineHosts.hasOwnProperty(key))
+    function hideAllInlineHosts(exceptPluginId) {
+        var keys = Object.keys(retainedInlineHosts);
+        for (var i = 0; i < keys.length; i++) {
+            if (exceptPluginId && keys[i] === exceptPluginId)
                 continue;
-            var host = retainedInlineHosts[key];
-            if (host)
-                host.visible = false;
+            destroyInlineHost(keys[i]);
         }
     }
 
@@ -215,15 +226,13 @@ Window {
         if (!page || page.length === 0)
             return;
         var host = ensureInlineHost(pluginId, page);
-        hideAllInlineHosts();
+        hideAllInlineHosts(pluginId);
         host.visible = true;
         host.forceActiveFocus();
     }
 
     function retainInlineHost(pluginId) {
-        var host = retainedInlineHosts[pluginId];
-        if (host)
-            host.visible = false;
+        destroyInlineHost(pluginId);
     }
 
     function destroyInlineHost(pluginId) {

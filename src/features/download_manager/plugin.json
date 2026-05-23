@@ -1,0 +1,31 @@
+{
+  "id": "download-manager",
+  "name": "下载管理器",
+  "version": "1.0.0",
+  "description": "多任务文件下载，支持进度跟踪",
+  "icon": "qta:mdi6.download",
+  "entrypoint": "runtime:create_runtime",
+  "qmlPage": "DownloadManagerPage.qml",
+  "contextProperty": "downloadManagerVm",
+  "category": "tool",
+  "order": 3,
+  "window": {
+    "width": 0.86,
+    "height": 0.82
+  },
+  "commands": [
+    {
+      "id": "download-manager.open",
+      "title": "下载管理器",
+      "subtitle": "多任务文件下载",
+      "icon": "qta:mdi6.download",
+      "keywords": ["下载", "download", "文件", "file"],
+      "prefixes": ["down", "download"],
+      "launchMode": "window",
+      "matchers": [
+        {"source": "input", "kind": "url", "boost": 90},
+        {"source": "clipboard", "kind": "url", "boost": 60}
+      ]
+    }
+  ]
+}

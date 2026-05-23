@@ -4,21 +4,27 @@
 
 ## 快速开始
 
-```powershell
+```bash
 uv sync
 uv run app
 ```
 
+打包独立应用：
+
+```bash
+uv run build
+```
+
 也可以通过安装后的入口运行：
 
-```powershell
+```bash
 app
 ```
 
 QML 热重载：
 
-```powershell
-$env:PY_DESKTOP_QML_HOT_RELOAD = "1"
+```bash
+PY_DESKTOP_QML_HOT_RELOAD=1 \
 uv run app
 ```
 
@@ -26,7 +32,7 @@ uv run app
 
 - [文档索引](docs/README.zh-CN.md)
 - [项目设计文档](docs/project-design.zh-CN.md)
-- [插件开发文档](docs/plugin-development.zh-CN.md)
+- [插件开发教程 / API 参考](docs/plugin-development.zh-CN.md)
 - [PyQt/PySide6 + QML 新手教程](docs/pyqt-qml-newbie-guide.zh-CN.md)
 
 ## 项目结构
@@ -48,18 +54,20 @@ src/
     ui/                  # 通用 QML 控件
     theme/               # 主题令牌
   features/
-    api_test/
+    api_debugger/
       plugin.json        # Manifest：命令、入口、启动模式
       runtime.py         # Runtime：懒创建 Session/ViewModel
-      ApiTestPage.qml    # View
+      ApiDebuggerPage.qml    # View
       view_model.py      # ViewModel：QObject + Property/Signal/Slot
       service.py         # Service：纯业务逻辑
-    download/        ...
+    download_manager/        ...
     image_compress/  ...
     json_parser/     ...
-    packet_capture/  ...
-    qr/              ...
-    system/              # view-only pages (settings, about) bound to AppViewModel
+    http_capture/  ...
+    ftp_sftp_ssh_client/ ...
+    qr_code/         ...
+    system_settings/ ...
+    about/           ...
 ```
 
 ## 分层约定
@@ -80,12 +88,18 @@ src/
 | `app` | `AppViewModel` |
 | `launcherBridge` | `LauncherBridge` |
 
-插件 ViewModel 只在插件 Session 活跃或保留期间注入，名称来自 Manifest 的 `contextProperty`，例如 `jsonParserVm`、`qrVm`、`clipboardVm`、`apiTestVm`。
+插件 ViewModel 只在插件 Session 活跃或保留期间注入，名称来自 Manifest 的 `contextProperty`，例如 `jsonParserVm`、`qrVm`、`clipboardVm`、`apiDebuggerVm`。
 
 ## 验证
 
-```powershell
+```bash
 uv run python -m compileall src
+uv run pytest
+```
+
+Windows / 历史辅助 smoke 脚本仍保留在 `scripts/`，用于补充验证，不作为当前 macOS / zsh 开发环境下的首选入口：
+
+```powershell
 scripts\smoke_import.ps1
 scripts\smoke_plugin_manifests.ps1
 scripts\smoke_storage.ps1

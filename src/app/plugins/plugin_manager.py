@@ -29,6 +29,15 @@ class PluginManager:
     def all_manifests(self) -> list[PluginManifest]:
         return sorted(self._manifests.values(), key=lambda item: item.order)
 
+    def replace_manifests(self, manifests: Iterable[PluginManifest]) -> None:
+        with self._lock:
+            self._manifests = {manifest.id: manifest for manifest in manifests}
+            valid_ids = set(self._manifests)
+            for plugin_id in list(self._runtimes):
+                if plugin_id not in valid_ids:
+                    runtime = self._runtimes.pop(plugin_id)
+                    runtime.on_exit()
+
     def get_manifest(self, plugin_id: str) -> PluginManifest | None:
         return self._manifests.get(plugin_id)
 

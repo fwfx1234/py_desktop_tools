@@ -13,10 +13,14 @@ class ServiceRegistry:
         platform: object | None = None,
         storage: object | None = None,
         clipboard: object | None = None,
+        plugin_importer: object | None = None,
+        imported_plugin_root: object | None = None,
     ) -> None:
         self._platform = platform
         self._storage = storage
         self._clipboard = clipboard
+        self._plugin_importer = plugin_importer
+        self._imported_plugin_root = imported_plugin_root
 
     @property
     def platform(self) -> object | None:
@@ -41,6 +45,22 @@ class ServiceRegistry:
     @clipboard.setter
     def clipboard(self, value: object | None) -> None:
         self._clipboard = value
+
+    @property
+    def plugin_importer(self) -> object | None:
+        return self._plugin_importer
+
+    @plugin_importer.setter
+    def plugin_importer(self, value: object | None) -> None:
+        self._plugin_importer = value
+
+    @property
+    def imported_plugin_root(self) -> object | None:
+        return self._imported_plugin_root
+
+    @imported_plugin_root.setter
+    def imported_plugin_root(self, value: object | None) -> None:
+        self._imported_plugin_root = value
 
     def require(self, key: str) -> object:
         value = getattr(self, key, None)

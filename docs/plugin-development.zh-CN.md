@@ -1,6 +1,6 @@
 # Py Desktop Tools 插件开发文档（完整版）
 
-本文档是 py-desktop-tools 插件系统的权威参考。面向自带插件和第三方插件开发者。
+本文档是 py-desktop-tools 插件系统的权威参考，同时也是面向自带插件和第三方插件开发者的教程 + API 参考。建议先按第 2 章完成一个最小插件，再回看第 4、6、7、11、17 章理解 Manifest、Runtime、Session、launchMode 和清理约定。
 
 ---
 
@@ -53,6 +53,18 @@ src/features/my_tool/
 └── MyToolPage.qml
 ```
 
+如果你要做外部插件，也可以放在独立目录，例如：
+
+```text
+plugins/my-tool/
+├── plugin.json
+├── runtime.py
+├── view_model.py
+└── MyToolPage.qml
+```
+
+开发期优先把目录压到最小，先跑通 `plugin.json -> Runtime -> ViewModel -> QML` 这条链路，再决定是否拆出 `service.py`、`components/`、`assets/`。
+
 ### 2.2 plugin.json
 
 ```json
@@ -89,6 +101,8 @@ from .view_model import MyToolViewModel
 def create_runtime():
     return SimpleQmlRuntime(lambda _ctx: MyToolViewModel())
 ```
+
+这里优先使用 `SimpleQmlRuntime`。它适合绝大多数 `inline_view` / `window` 的 QML 插件：框架会在进入插件时创建 ViewModel、封装成 `QmlPluginSession`，真正关闭时再统一调用 `session.close()` 和 `ViewModel.dispose()`。
 
 ### 2.4 view_model.py
 
@@ -155,9 +169,17 @@ Item {
 }
 ```
 
+QML import 约定：
+
+- 共享控件用 `import "../../app/ui"`
+- 主题令牌用 `import "../../app/theme"`
+- 插件内局部组件通常再加 `import "components"`
+
+如果现有文件已经有更近的相对路径，跟随现有工程写法，不要为了统一形式去改动无关文件。
+
 ### 2.6 验收三步
 
-```powershell
+```bash
 # 1. 检查清单是否正确加载
 uv run python -c "
 import sys; sys.path.insert(0, 'src')
@@ -166,7 +188,10 @@ for m in load_all_plugin_manifests():
     print(f'{m.id}: {m.name}')
 "
 
-# 2. 启动应用实测
+# 2. 做一次最小语法检查
+uv run python -m compileall src
+
+# 3. 启动应用实测
 uv run app
 ```
 
@@ -208,22 +233,26 @@ plugins/
 
 通过环境变量指定外部插件目录：
 
-```powershell
-$env:PY_DESKTOP_TOOLS_PLUGIN_DIR = "D:\my_plugins;E:\team_plugins"
+```bash
+PY_DESKTOP_TOOLS_PLUGIN_DIR="/Users/me/my_plugins:/Volumes/team_plugins" uv run app
 ```
 
-多个目录用 `;`（Windows）或 `:`（Linux/macOS）分隔。
+多个目录使用 `os.pathsep` 分隔：Windows 通常是 `;`，macOS / Linux 通常是 `:`。
 
 ### 3.3 多 Manifest 插件包
 
-一个目录可以包含多个 Manifest 文件，共享同一份 Runtime 代码：
+框架支持一个目录包含多个 Manifest 文件并共享 Runtime 代码，但自带插件优先保持一个插件一个目录，目录名使用插件 id 的 snake_case 形式：
 
 ```text
-src/features/system/
-├── system-settings.plugin.json   # plugin.json 的变体
-├── about.plugin.json
-├── runtime.py                    # 共享 Runtime
+src/features/system_settings/
+├── plugin.json                   # id: "system-settings"
+├── runtime.py
 ├── SystemSettingsPage.qml
+└── view_model.py
+
+src/features/about/
+├── plugin.json                   # id: "about"
+├── runtime.py
 └── AboutPage.qml
 ```
 
@@ -255,7 +284,7 @@ src/features/system/
 
 | 字段 | 类型 | 必需 | 说明 |
 |------|------|------|------|
-| `id` | string | **是** | 全局唯一标识，使用 `kebab-case`，如 `api-test` |
+| `id` | string | **是** | 全局唯一标识，使用 `kebab-case`，如 `api-debugger` |
 | `name` | string | **是** | 显示名称 |
 | `entrypoint` | string | **是** | Runtime 工厂，格式 `模块名:函数名`，如 `runtime:create_runtime` |
 | `version` | string | 否 | 语义化版本号 |
@@ -388,6 +417,13 @@ def create_runtime():
 - `on_enter()` → 创建 ViewModel → 返回 `QmlPluginSession`
 - `on_exit()` → 空操作（资源清理由 Session.close() 处理）
 
+推荐场景：
+
+- 你有一个明确的 QML 页面；
+- 只需要把一个 ViewModel 暴露给 QML；
+- 资源清理可以集中放在 `ViewModel.dispose()`；
+- 不需要自己实现特殊 Session 协议。
+
 ### 6.3 自定义 Runtime
 
 需要更复杂逻辑时自己实现：
@@ -426,7 +462,7 @@ class PluginContext:
 | 属性 | 用途 |
 |------|------|
 | `ctx.platform` | 平台能力入口，优先使用 |
-| `ctx.services.clipboard` | 获取剪切板后台服务（监听、存储、读取） |
+| `ctx.services.clipboard` | 获取剪贴板后台服务（监听、存储、读取） |
 | `ctx.command_index` | 读取/写入启动次数和最近使用记录 |
 
 推荐写法：
@@ -472,10 +508,12 @@ class PluginAction:
 ```
 打开插件 → Session 创建或复用 → ViewModel 注入 QML → UI 加载
 用户操作 → ViewModel 处理 → Signal 通知 QML
-普通关闭 → suspend_plugin() → UI 隐藏或销毁 → Python Session 短期保留
-再次打开 → 可复用保留 Session
+普通关闭 → suspend_plugin() → QML host 隐藏 → Python Session / ViewModel / Runtime 默认保留 5 分钟
+5 分钟内再次打开 → 优先复用保留 Session
 强制关闭或保留到期 → unload_plugin() → QML context 设为 null → Session.close() → Runtime 引用释放
 ```
+
+这点对 `inline_view` 很关键：普通关闭不是销毁。默认行为是保留 5 分钟，也就是 300_000ms。保留期内再次打开同一插件时，框架优先复用原 Session；只有保留到期、强制关闭或应用退出时，才会真正清理 QML host、context property、Session 和 Runtime。
 
 ### 7.2 QmlPluginSession（框架提供）
 
@@ -529,8 +567,8 @@ class MyListSession(QmlPluginSession):
 QML suspendPlugin("my-tool", host)
   → LauncherBridge.suspendPlugin(plugin_id, host)
   → pluginSuspended.emit(plugin_id, host)
-  → LauncherRuntimeCoordinator.suspend_plugin()
-  → PluginSurfaceCoordinator.suspend(plugin_id, host)
+  → ApplicationController.suspend_plugin()
+  → PluginHostService.suspend(plugin_id, host)
   → PluginSessionManager.suspend_plugin():
       1. 保留 Python Session 与 ViewModel
       2. 标记 retained_inline / retained_list / retained_window
@@ -539,7 +577,7 @@ QML suspendPlugin("my-tool", host)
 QML closePlugin("my-tool") 或保留到期
   → LauncherBridge.closePlugin(plugin_id) / retention timeout
   → pluginClosed.emit(plugin_id) / notify_retention_expired()
-  → LauncherRuntimeCoordinator.force_close_plugin() / on_retention_expired()
+  → ApplicationController.force_close_plugin() / on_retention_expired()
   → PluginSessionManager.unload_plugin():
       1. session = self._sessions.pop(plugin_id)
       2. setContextProperty(contextProperty, None)
@@ -548,6 +586,8 @@ QML closePlugin("my-tool") 或保留到期
 ```
 
 普通关闭应优先走挂起，只有用户明确丢弃、强制关闭、保留到期或应用退出时才卸载。
+
+开发者约束也随之明确：普通关闭时不要主动清理 ViewModel，不要手动把自己的状态清空。最终清理应放在 `ViewModel.dispose()`、`session.close()` 或 runtime 的关闭路径里。
 
 ---
 
@@ -658,6 +698,8 @@ def dispose(self) -> None:
 
 **重要**：每次修改代码时，检查你的 ViewModel 是否有 `dispose()` 方法。不要盲目 `disconnect()` 所有 Signal；未连接的 Signal 在 PySide6 中可能打印 RuntimeWarning。通常只需要停止后台任务、Timer，并关闭 Service 资源。
 
+再强调一次：`inline_view` 普通关闭后默认只是挂起保留 5 分钟，`dispose()` 不会在这一步调用。不要把“面板关闭”当成“对象销毁”。
+
 ---
 
 ## 9. Service：纯 Python 业务层
@@ -692,9 +734,9 @@ class MyService:
 ### 9.3 本项目中的 Service 示例
 
 ```
-src/app/services/clipboard/service.py  # 剪切板后台监听、SQLite 存储、配置监听
-src/features/api_test/service.py      # HTTP 请求、数据库、WS 连接
-src/features/qr/service.py             # 二维码生成和扫描
+src/app/services/clipboard/service.py  # 剪贴板后台监听、SQLite 存储、配置监听
+src/features/api_debugger/service.py      # HTTP 请求、数据库、WS 连接
+src/features/qr_code/service.py        # 二维码生成和扫描
 src/features/json_parser/service.py    # JSON 格式化、JSONPath
 ```
 
@@ -752,6 +794,8 @@ Item {
     // 界面...
 }
 ```
+
+这也是推荐的 import 约定：共享组件从 `app/ui` 引入，主题从 `app/theme` 引入，本插件子组件从本地 `components/` 引入。
 
 ### 10.2 必须使用的通用组件
 
@@ -816,16 +860,25 @@ ColumnLayout {
 
 | 模式 | UI 形态 | 关闭时机 | 典型插件 |
 |------|---------|---------|---------|
-| `inline_view` | 嵌入 Launcher 输入框下方 | 按 Esc 或失焦 | JSON 解析、二维码、剪切板 |
-| `window` | 独立原生窗口 | 用户关窗 | API 测试、下载工具 |
+| `inline_view` | 嵌入 Launcher 输入框下方 | 按 Esc 或失焦 | JSON 解析、二维码、剪贴板 |
+| `window` | 独立原生窗口 | 用户关窗 | API 调试器、下载管理器 |
 | `list` | Launcher 内列表模式 | 按 Esc | 软件快速启动 |
 | `none` | 无 UI，执行后消失 | 立即关闭 Session | 重启应用 |
+
+选择建议：
+
+- 默认先考虑 `inline_view`：输入驱动、结果区域不复杂的工具都适合；
+- 需要更大工作区、复杂表单、多面板布局时用 `window`；
+- 结果天然是可导航列表时用 `list`；
+- 只执行动作、不展示界面时用 `none`。
 
 ### 11.1 inline_view 开发要点
 
 - 页面根元素必须是 `Item`（不是 `Window`）
 - 页面必须提供 `activateSelection()` 和 `moveSelection(delta)` 函数，供键盘导航
 - 页面宽度取自 Launcher 宽度，不需要自己设
+- 普通关闭后宿主 QML host 会隐藏，但 Session / ViewModel / Runtime 默认继续保留 5 分钟
+- 5 分钟内再次打开会优先复用旧会话，因此界面状态应允许自然恢复
 
 ### 11.2 window 开发要点
 
@@ -880,7 +933,7 @@ class MyBackgroundRuntime:
 - Manifest 不支持 `threadedBackground`；后台 Runtime 默认在主线程启动，插件内部如需纯 Python 后台任务，应由自己的 Service 管理
 - 后台插件若创建 Qt 对象、QTimer、QApplication 相关资源，必须在主线程启动
 
-### 12.4 剪切板插件 —— 完整案例
+### 12.4 剪贴板插件 —— 完整案例
 
 ```python
 # runtime.py — ClipboardRuntime
@@ -933,8 +986,8 @@ class LauncherContext:
     input_body: str                    # 去掉前缀后的文本
     prefix: str                        # 识别到的前缀
     detected_input_kinds: frozenset    # 检测到的文本类型: {"json", "url", ...}
-    clipboard_text: str                # 剪切板文本
-    detected_clipboard_kinds: frozenset  # 剪切板类型
+    clipboard_text: str                # 剪贴板文本
+    detected_clipboard_kinds: frozenset  # 剪贴板类型
 ```
 
 ### 13.2 Matcher 声明
@@ -957,24 +1010,24 @@ class LauncherContext:
 |------|------|--------|
 | `json` | 文本能解析为 JSON | input, clipboard |
 | `url` | 文本是 URL | input, clipboard |
-| `file` | 文本/剪切板内容是文件路径 | input, clipboard |
-| `image` | 剪切板原生图片 | clipboard |
+| `file` | 文本/剪贴板内容是文件路径 | input, clipboard |
+| `image` | 剪贴板原生图片 | clipboard |
 | `image_file` | 文件扩展名是图片 | input, clipboard |
-| `clipboard` | 剪切板任意内容 | clipboard |
+| `clipboard` | 剪贴板任意内容 | clipboard |
 | `text` | 普通文本 | input |
 | `regex` | 正则匹配，需配合 `pattern` | input |
 
 ### 13.4 完整示例
 
 ```json
-// api_test/plugin.json
+// api_debugger/plugin.json
 "matchers": [
     {"source": "input",     "kind": "url", "boost": 120},
     {"source": "clipboard", "kind": "url", "boost": 70}
 ]
 ```
 
-效果：输入 URL 或剪切板有 URL 时，API 测试插件排在前面。
+效果：输入 URL 或剪贴板有 URL 时，API 调试器插件排在前面。
 
 ```json
 // image_compress/plugin.json
@@ -1011,10 +1064,10 @@ class LauncherContext:
 |------|------|
 | `json`, `jq` | JSON 解析 |
 | `qr`, `qrcode` | 二维码 |
-| `api`, `http` | API 测试 |
+| `api`, `http` | API 调试器 |
 | `img`, `image` | 图片压缩 |
-| `clip`, `clipboard` | 剪切板历史 |
-| `down`, `download` | 下载工具 |
+| `clip`, `clipboard` | 剪贴板历史 |
+| `down`, `download` | 下载管理器 |
 | `case` | 文本大小写 |
 
 ### 14.4 前缀 vs 业务输入
@@ -1036,7 +1089,7 @@ class LauncherContext:
 ### 15.1 什么是动态命令
 
 运行时注册的命令，不需要修改 Manifest。用于：
-- 下载插件：有未完成任务时贡献"打开下载任务"
+- 下载管理器插件：有未完成任务时贡献"打开下载任务"
 - API 插件：贡献最近的请求记录
 - 任何运行时状态变化
 
@@ -1044,7 +1097,7 @@ class LauncherContext:
 
 ```python
 ctx.platform.commands.register(
-    "download.pause_all",
+    "download-manager.pause_all",
     title="暂停所有下载",
     subtitle="暂停当前活跃的下载任务",
     icon="qta:mdi6.pause",
@@ -1053,7 +1106,7 @@ ctx.platform.commands.register(
 )
 
 # 取消注册
-ctx.platform.commands.unregister("download.pause_all")
+ctx.platform.commands.unregister("download-manager.pause_all")
 ```
 
 动态命令统一通过 `ctx.platform.commands` 注册和注销。
@@ -1196,7 +1249,7 @@ class MyViewModel(QObject):
 
 ### 插件搜索不到
 
-```powershell
+```bash
 # 检查清单是否正确加载
 uv run python -c "
 import sys; sys.path.insert(0, 'src')
@@ -1243,6 +1296,7 @@ def process(self, text):  # ✗ QML 调不到
 - `ViewModel.dispose()` 是否存在且被调用？
 - Service 是否有关闭数据库/文件/网络连接？
 - 是否停止了后台任务、Timer 或热键监听？
+- 是否误把普通关闭当成最终销毁，提前清空了会在 5 分钟保留期内复用的状态？
 - 不要盲目断开所有 Signal；未连接的 Signal 可能打印 RuntimeWarning。
 
 ---
@@ -1253,11 +1307,12 @@ def process(self, text):  # ✗ QML 调不到
 |---------|------|-----------|------------|------|
 | `json-parser` | JSON 解析 | inline_view | lazy | 简单完整插件，学习起点 |
 | `qr-code` | 二维码 | inline_view | lazy | ViewModel + Service 分层 |
-| `image-compress` | 图片压缩 | inline_view | lazy | 使用 ctx.services 获取剪切板 |
-| `api-test` | API 测试 | window | lazy | 最复杂插件，全功能 MVVM |
-| `clipboard` | 剪切板 | inline_view | **background** | 后台服务 + 懒 UI |
-| `download` | 下载工具 | window | lazy | 窗口模式参考 |
+| `image-compress` | 图片压缩 | inline_view | lazy | 使用 ctx.services 获取剪贴板 |
+| `api-debugger` | API 调试器 | window | lazy | 最复杂插件，全功能 MVVM |
+| `clipboard` | 剪贴板 | inline_view | **background** | 后台服务 + 懒 UI |
+| `download-manager` | 下载管理器 | window | lazy | 窗口模式参考 |
 | `app-launcher` | 软件快速启动 | list | lazy | list 模式参考 |
-| `packet-capture` | 网络抓包 | window | lazy | 窗口模式 |
+| `http-capture` | HTTP 抓包 | window | lazy | 窗口模式 |
+| `ftp-sftp-ssh-client` | FTP/SFTP/SSH 客户端 | window | lazy | FTP/FTPS/SFTP 文件管理 + SSH 终端 |
 | `system-settings` | 系统设置 | inline_view | lazy | 无 contextProperty |
-| `about` | 关于 | inline_view | lazy | 多 Manifest 共享 Runtime |
+| `about` | 关于 | inline_view | lazy | 应用版本信息 |

@@ -219,7 +219,8 @@ class WinHotkeyManager(QObject):
             return False
         if not self._native_registered:
             return True
-        return self._hotkey_id == HOTKEY_ID or self._hotkey.strip().lower().replace("＋", "+") == "alt+space"
+        normalized = self._hotkey.strip().lower().replace("＋", "+")
+        return self._hotkey_id in {1, 2} or normalized in {"alt+space", "alt+v"}
 
 
 class WindowsHotkeyFactory:

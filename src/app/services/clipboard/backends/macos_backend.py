@@ -43,7 +43,7 @@ def _ensure_appkit():
         import AppKit
         import Foundation
     except Exception as exc:
-        raise RuntimeError("AppKit 不可用，macOS 剪切板能力不可用") from exc
+        raise RuntimeError("AppKit 不可用，macOS 剪贴板能力不可用") from exc
     _appkit = AppKit
     _foundation = Foundation
     _consts["string"] = AppKit.NSPasteboardTypeString

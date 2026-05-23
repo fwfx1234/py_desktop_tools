@@ -396,7 +396,7 @@ Item {
 
                 Label {
                     Layout.fillWidth: true
-                    text: "剪切板历史"
+                    text: "剪贴板历史"
                     color: textMain
                     font.pixelSize: 20
                     font.weight: Font.DemiBold
@@ -1057,7 +1057,7 @@ Item {
 
                             SectionTitle {
                                 title: "快捷键"
-                                subtitle: "打开剪切板窗口"
+                                subtitle: "打开剪贴板窗口"
                             }
 
                             RowLayout {
@@ -1473,7 +1473,7 @@ Item {
 
         function onMessageChanged(message) {
             statusText = message
-            if (message === "已写回系统剪切板") {
+            if (message === "已写回系统剪贴板") {
                 root.closeCurrentSurface()
             }
         }

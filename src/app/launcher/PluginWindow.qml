@@ -8,6 +8,7 @@ Window {
     id: pluginWin
 
     property string pluginId: ""
+    property string pluginWindowId: ""
     property string pluginName: ""
     property string qmlPage: ""
     property var pluginData: ({})
@@ -16,7 +17,7 @@ Window {
     property bool alwaysOnTop: false
     property bool isMacos: typeof app !== "undefined" && app ? app.isMacos : false
     property bool retainOnClose: true
-    signal retainedCloseRequested(string pluginId)
+    signal retainedCloseRequested(string pluginId, string pluginWindowId)
 
     width: 800
     height: 600
@@ -61,7 +62,7 @@ Window {
             return
         close.accepted = false
         pluginWin.hide()
-        pluginWin.retainedCloseRequested(pluginWin.pluginId)
+        pluginWin.retainedCloseRequested(pluginWin.pluginId, pluginWin.pluginWindowId)
     }
 
     onVisibleChanged: {

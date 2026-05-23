@@ -1,0 +1,28 @@
+{
+  "id": "ftp-sftp-ssh-client",
+  "name": "FTP/SFTP/SSH 客户端",
+  "version": "1.0.0",
+  "description": "FTP、FTPS、SFTP 远程文件管理与 SSH 终端",
+  "icon": "qta:mdi6.folder-network-outline",
+  "entrypoint": "runtime:create_runtime",
+  "qmlPage": "FtpSftpSshClientPage.qml",
+  "contextProperty": "ftpSftpSshClientVm",
+  "category": "tool",
+  "requires": ["webengine"],
+  "window": {
+    "width": 0.86,
+    "height": 0.82
+  },
+  "order": 6,
+  "commands": [
+    {
+      "id": "ftp-sftp-ssh-client.open",
+      "title": "FTP/SFTP/SSH 客户端",
+      "subtitle": "远程文件管理与 SSH 终端",
+      "icon": "qta:mdi6.folder-network-outline",
+      "keywords": ["ftp", "sftp", "ftps", "ssh", "远程", "文件", "服务器"],
+      "prefixes": ["ftp", "sftp", "ssh"],
+      "launchMode": "window"
+    }
+  ]
+}

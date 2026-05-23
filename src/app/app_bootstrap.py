@@ -8,15 +8,17 @@ from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtWidgets import QApplication
 
 from app.app_context import ApplicationContext
+from app.application_controller import ApplicationController
 from app.app_view_model import AppViewModel
 from app.commands.command_index_db import CommandIndexDb
 from app.commands.command_service import CommandService
 from app.commands.dynamic_command_registry import DynamicCommandRegistry
+from app.hotkeys import HotkeyLifecycle, HotkeyService
 from app.launcher.launcher_bridge import LauncherBridge
-from app.launcher_runtime_coordinator import LauncherRuntimeCoordinator
+from app.launcher.launcher_window import LauncherWindowController
 from app.platform.factory import create_platform_services
-from app.plugin_surface_coordinator import PluginSurfaceCoordinator
 from app.plugins.background_manager import BackgroundManager
+from app.plugins.host import PluginHostService
 from app.plugins.manifest_loader import load_all_plugin_manifests
 from app.plugins.plugin_manager import PluginManager
 from app.plugins.runtime import PluginContext
@@ -24,8 +26,9 @@ from app.plugins.service_registry import ServiceRegistry
 from app.plugins.session_manager import PluginSessionManager
 from app.qta_icon_provider import QtAwesomeImageProvider
 from app.paths import resource_root
+from app.plugins.importer import import_plugin_package, imported_plugin_root
 from app.storage import StorageManager
-from app.tray_coordinator import TrayCoordinator
+from app.tray.service import TrayService
 
 
 class ApplicationBootstrapper:
@@ -81,6 +84,16 @@ class ApplicationBootstrapper:
                 storage=storage,
             ),
         )
+        context_ref: dict[str, ApplicationContext] = {}
+
+        def import_plugins(source: str) -> dict:
+            result = import_plugin_package(source)
+            if result.ok and context_ref.get("context") is not None:
+                context_ref["context"].reload_plugins()
+            return result.to_dict()
+
+        plugin_context.services.plugin_importer = import_plugins
+        plugin_context.services.imported_plugin_root = imported_plugin_root
         background_manager = BackgroundManager(manifests, plugin_manager, plugin_context)
         launcher_bridge = LauncherBridge(command_service, plugin_context.services)
         qml_context.setContextProperty("launcherBridge", launcher_bridge)
@@ -103,21 +116,26 @@ class ApplicationBootstrapper:
             elapsedMs=int((perf_counter() - qml_started_at) * 1000),
         )
 
-        coordinators_started_at = perf_counter()
+        app_services_started_at = perf_counter()
         launcher_window = self._find_launcher_window(engine)
-        coordinator_ref: dict[str, LauncherRuntimeCoordinator] = {}
+        controller_ref: dict[str, ApplicationController] = {}
+        launcher_window_controller = LauncherWindowController(
+            qt_app=self._qt_app,
+            platform_services=platform_services,
+            launcher_window=launcher_window,
+        )
 
         def on_retention_expired(plugin_id: str, state) -> None:
-            coordinator = coordinator_ref.get("coordinator")
-            if coordinator is not None:
-                coordinator.on_retention_expired(plugin_id, state)
+            controller = controller_ref.get("controller")
+            if controller is not None:
+                controller.on_retention_expired(plugin_id, state)
                 return
             session_manager.unload_plugin(plugin_id)
 
         def on_retained_close(plugin_id: str, host: str) -> None:
-            coordinator = coordinator_ref.get("coordinator")
-            if coordinator is not None:
-                coordinator.on_surface_retained_close(plugin_id, host)
+            controller = controller_ref.get("controller")
+            if controller is not None:
+                controller.on_surface_retained_close(plugin_id, host)
 
         session_manager = PluginSessionManager(
             qml_context,
@@ -125,7 +143,7 @@ class ApplicationBootstrapper:
             plugin_context,
             on_retention_expired=on_retention_expired,
         )
-        surface_coordinator = PluginSurfaceCoordinator(
+        plugin_host = PluginHostService(
             engine,
             self._qt_app,
             plugin_window_qml_path=str(plugin_window_qml),
@@ -134,34 +152,44 @@ class ApplicationBootstrapper:
             launcher_window=launcher_window,
             on_retained_close=on_retained_close,
         )
-        runtime_coordinator = LauncherRuntimeCoordinator(
-            qt_app=self._qt_app,
-            platform_services=platform_services,
-            manifests=manifests,
-            plugin_context=plugin_context,
-            background_manager=background_manager,
+        app_controller = ApplicationController(
             session_manager=session_manager,
-            surface_coordinator=surface_coordinator,
+            plugin_host=plugin_host,
             launcher_bridge=launcher_bridge,
-            launcher_window=launcher_window,
+            launcher_window_controller=launcher_window_controller,
             on_quit=self._qt_app.quit,
         )
-        coordinator_ref["coordinator"] = runtime_coordinator
-        tray_coordinator = TrayCoordinator(
+        controller_ref["controller"] = app_controller
+        hotkey_service = HotkeyService(
+            platform_services,
+            self._qt_app,
+            on_launcher_toggle=app_controller.toggle_launcher,
+            on_clipboard_toggle=app_controller.open_clipboard_history,
+            on_plugin_launched=app_controller.open_plugin,
+        )
+        hotkey_lifecycle = HotkeyLifecycle(
+            qt_app=self._qt_app,
+            manifests=manifests,
+            platform_services=platform_services,
+            plugin_context=plugin_context,
+            launcher_window_controller=launcher_window_controller,
+            hotkey_service=hotkey_service,
+        )
+        tray_service = TrayService(
             parent=self._qt_app,
-            on_show_window=runtime_coordinator.toggle_launcher,
-            on_restart=runtime_coordinator.restart_app,
+            on_show_window=app_controller.toggle_launcher,
+            on_restart=app_controller.restart_app,
             on_quit=self._qt_app.quit,
         )
         self._log.debug(
-            "app.bootstrap.coordinators_ready",
-            "运行协调器初始化完成",
+            "app.bootstrap.app_services_ready",
+            "应用运行服务初始化完成",
             launcherWindowFound=launcher_window is not None,
-            elapsedMs=int((perf_counter() - coordinators_started_at) * 1000),
+            elapsedMs=int((perf_counter() - app_services_started_at) * 1000),
         )
 
         self._log.debug("app.bootstrap.build_ready", "应用启动上下文组装完成", elapsedMs=int((perf_counter() - total_started_at) * 1000))
-        return ApplicationContext(
+        app_context = ApplicationContext(
             qt_app=self._qt_app,
             log=self._log,
             app_dir=app_dir,
@@ -180,11 +208,15 @@ class ApplicationBootstrapper:
             command_service=command_service,
             launcher_bridge=launcher_bridge,
             session_manager=session_manager,
-            surface_coordinator=surface_coordinator,
-            runtime_coordinator=runtime_coordinator,
-            tray_coordinator=tray_coordinator,
+            plugin_host=plugin_host,
+            app_controller=app_controller,
+            hotkey_lifecycle=hotkey_lifecycle,
+            tray_service=tray_service,
+            launcher_window_controller=launcher_window_controller,
             launcher_window=launcher_window,
         )
+        context_ref["context"] = app_context
+        return app_context
 
     @staticmethod
     def _find_launcher_window(engine: QQmlApplicationEngine) -> object | None:

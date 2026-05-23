@@ -84,9 +84,9 @@ Flickable {                      ← 可滚动容器
 - `messageReceived` — `Signal` 通知
 - `items` — `@Property` 列表数据
 
-### 和完整插件（api_test）的对比
+### 和完整插件（api_debugger）的对比
 
-| 方面 | qml-demo | api_test |
+| 方面 | qml-demo | api_debugger |
 |------|---------|---------|
 | QML 结构 | 17 页演示页面 | 单页入口，多组件拆分 |
 | ViewModel 行数 | ~100 | ~970 |
@@ -100,5 +100,5 @@ Flickable {                      ← 可滚动容器
 1. 读 `docs/project-design.zh-CN.md` — 当前项目架构和插件边界
 2. 读 `src/features/json_parser/` — 最简单的完整插件
 3. 读 `src/features/clipboard/` — 后台插件案例
-4. 读 `src/features/api_test/` — 复杂全功能插件案例
+4. 读 `src/features/api_debugger/` — 复杂全功能插件案例
 5. 读教程系列 `docs/pyside6-qml-tutorial/` — 从零开始的完整教程

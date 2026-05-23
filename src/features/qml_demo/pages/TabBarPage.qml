@@ -13,7 +13,7 @@ Flickable {
         id: col; width: parent.width - 24; x: 12; y: 12; spacing: 20
 
         Label { text: "TabBar + StackLayout"; font.pixelSize: 20; font.bold: true; color: primary }
-        Label { text: "选项卡切换 + 内容区 —— api_test、clipboard 等插件的基础布局模式"; font.pixelSize: 13; color: Theme.token("color-text-secondary", dark) }
+        Label { text: "选项卡切换 + 内容区 —— api_debugger、clipboard 等插件的基础布局模式"; font.pixelSize: 13; color: Theme.token("color-text-secondary", dark) }
 
         ColumnLayout { spacing: 8
             Label { text: "基本模式"; font.pixelSize: 15; font.bold: true; color: Theme.token("color-text-primary", dark) }
@@ -52,6 +52,6 @@ Flickable {
             }
         }
 
-        Label { text: "TabBar 控制 currentIndex，StackLayout 跟随。这是 api_test、clipboard 等插件的标准布局模式。"; font.pixelSize: 12; color: primary; wrapMode: Text.Wrap; Layout.fillWidth: true }
+        Label { text: "TabBar 控制 currentIndex，StackLayout 跟随。这是 api_debugger、clipboard 等插件的标准布局模式。"; font.pixelSize: 12; color: primary; wrapMode: Text.Wrap; Layout.fillWidth: true }
     }
 }

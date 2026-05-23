@@ -2,7 +2,7 @@
 
 ## 背景与目标
 
-当前 `二维码`、`JSON 解析`、`下载工具`、`抓包工具`、`图片压缩` 五个工具插件已经具备基础能力，但页面普遍以表单和列表直接堆叠为主，缺少 mac 工具类应用常见的紧凑工具栏、分栏信息结构、稳定状态反馈和高频操作入口。部分功能也停留在 MVP 阶段，例如抓包工具当前只生成模拟请求，下载和图片压缩缺少输出定位与批量结果反馈。
+当前 `二维码`、`JSON 解析`、`下载管理器`、`HTTP 抓包`、`图片压缩` 五个工具插件已经具备基础能力，但页面普遍以表单和列表直接堆叠为主，缺少 mac 工具类应用常见的紧凑工具栏、分栏信息结构、稳定状态反馈和高频操作入口。部分功能也停留在 MVP 阶段，例如HTTP 抓包当前只生成模拟请求，下载和图片压缩缺少输出定位与批量结果反馈。
 
 本次改造目标是保留现有插件架构和启动方式，在 macOS 开发环境下重新设计这五个插件的界面与核心交互，使其更接近专业桌面工具：信息密度更高、操作路径更短、状态更清晰，并补齐必要的 ViewModel 和 Service 能力。
 
@@ -10,8 +10,8 @@
 
 - 二维码：保留 `inline_view` 打开方式，优化生成、扫描、历史和导出体验。
 - JSON 解析：保留独立窗口，优化编辑器分栏、格式化、压缩、查询和错误反馈。
-- 下载工具：保留独立窗口，改为自动保存为主，增强任务队列管理和 Finder 定位。
-- 抓包工具：保留独立窗口，从模拟数据升级为真实本地代理，支持 HTTPS 解密流程。
+- 下载管理器：保留独立窗口，改为自动保存为主，增强任务队列管理和 Finder 定位。
+- HTTP 抓包：保留独立窗口，从模拟数据升级为真实本地代理，支持 HTTPS 解密流程。
 - 图片压缩：保留 `inline_view` 打开方式，优化拖放、批量结果、自动保存和输出目录定位。
 
 不在本次范围内：
@@ -54,7 +54,7 @@
 - 错误反馈尽量包含行列号、错误摘要和失败阶段。
 - 保留现有 JSONPath 子集，不在本轮引入完整 JSONPath 第三方库，避免扩大解析语义。
 
-### 下载工具
+### 下载管理器
 
 - URL 输入位于顶部工具栏，粘贴 URL 后可直接回车创建任务。
 - 默认自动保存到 `~/Downloads/PyDesktopTools/Downloads/`，文件名优先从响应头 `Content-Disposition` 推断，其次从 URL path 推断，最后使用时间戳。
@@ -64,7 +64,7 @@
 - Service 层保留取消能力，补充文件名推断、任务元数据、失败原因、完成路径。
 - 下载完成或失败后通过状态区展示最近事件。
 
-### 抓包工具
+### HTTP 抓包
 
 - 引入 `mitmproxy` 作为真实本地代理核心依赖。
 - 默认监听 `127.0.0.1:8899`；端口占用时自动尝试后续端口，并在界面显示实际端口。
@@ -100,14 +100,14 @@
 - 输出结果携带状态信息：错误文本、行列号、统计信息。
 - 复制仍通过现有剪贴板能力实现。
 
-### 下载
+### 下载管理器
 
 - 保留 `downloadFile(url, savePath)` 兼容旧调用。
 - 新增 `downloadUrl(url)` 使用自动保存策略。
 - 新增 `retryDownloadTask(id)`、`removeDownloadTask(id)`、`revealDownload(id)`、`openDownloadedFile(id)`。
 - 任务数据增加 `fileName`、`domain`、`savePath`、`totalBytes`、`writtenBytes`、`elapsedMs`、`error`。
 
-### 抓包
+### HTTP 抓包
 
 - runtime 改为接收 `PluginContext`，ViewModel 需要平台 API 和插件数据目录。
 - Service 层新增代理生命周期：start、stop、pause、resume、clear。
@@ -123,7 +123,7 @@
 
 ## 依赖变化
 
-- 新增 `mitmproxy`，用于抓包工具真实代理和 HTTPS 解密。
+- 新增 `mitmproxy`，用于 HTTP 抓包真实代理和 HTTPS 解密。
 - dry-run 检查显示 Python 3.13 环境可解析 `mitmproxy==12.2.3`，会带入 `mitmproxy-macos`、`mitmproxy-rs`、`aioquic`、`h11`、`h2`、`brotli`、`zstandard` 等依赖。
 - 实施时使用 `uv add mitmproxy` 更新 `pyproject.toml` 和 `uv.lock`。
 - 现有 `opencv-python`、`qrcode`、`Pillow`、`requests`、`pyperclip` 继续沿用。
@@ -131,17 +131,17 @@
 ## 测试计划
 
 - 新增或补齐 focused tests：
-  - `tests/features/qr/`：预览不写历史、保存写历史、扫描结果、导出路径。
+  - `tests/features/qr_code/`：预览不写历史、保存写历史、扫描结果、导出路径。
   - `tests/features/json_parser/`：格式化、压缩、查询、错误位置、复制失败处理。
-  - `tests/features/download/`：自动文件名推断、任务状态、取消、重试、失败原因。
+  - `tests/features/download_manager/`：自动文件名推断、任务状态、取消、重试、失败原因。
   - `tests/features/image_compress/`：输出路径、逐文件结果、失败文件、汇总统计。
-  - `tests/features/packet_capture/`：代理状态转换、flow 到 row/detail 的转换、过滤逻辑。
-- 抓包服务单元测试使用 fake mitmproxy flow，不依赖真实外网。
+  - `tests/features/http_capture/`：代理状态转换、flow 到 row/detail 的转换、过滤逻辑。
+- HTTP 抓包服务单元测试使用 fake mitmproxy flow，不依赖真实外网。
 - HTTPS 解密和证书信任作为手动验证项或 slow 集成测试，不放入默认测试路径。
 - 实施完成后运行：
 
 ```bash
-uv run pytest tests/features/qr tests/features/json_parser tests/features/download tests/features/image_compress tests/features/packet_capture
+uv run pytest tests/features/qr_code tests/features/json_parser tests/features/download_manager tests/features/image_compress tests/features/http_capture
 uv run python -m compileall src
 ```
 
@@ -156,7 +156,7 @@ uv run app
 ## 假设与边界
 
 - 自动保存目录固定为 `~/Downloads/PyDesktopTools/<PluginName>/`，本轮不做持久化目录设置。
-- 抓包工具只在用户点击启动后运行，不后台常驻。
+- HTTP 抓包只在用户点击启动后运行，不后台常驻。
 - 应用不自动修改系统代理、不自动安装或信任证书，只提供可操作路径和清晰状态。
 - HTTPS 正文解密必须依赖用户完成证书信任；未完成时功能降级并明确提示。
 - QR 和图片压缩仍按内嵌插件适配小尺寸，不强制弹出独立窗口。

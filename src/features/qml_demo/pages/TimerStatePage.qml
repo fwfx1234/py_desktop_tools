@@ -58,6 +58,6 @@ Flickable {
             }
         }
 
-        Label { text: "Timer 用于延迟/定时操作（如剪切板隐藏延迟、热重载防抖）。states 用声明式替代 if/else 写不同状态 UI。"; font.pixelSize: 12; color: primary; wrapMode: Text.Wrap; Layout.fillWidth: true }
+        Label { text: "Timer 用于延迟/定时操作（如剪贴板隐藏延迟、热重载防抖）。states 用声明式替代 if/else 写不同状态 UI。"; font.pixelSize: 12; color: primary; wrapMode: Text.Wrap; Layout.fillWidth: true }
     }
 }

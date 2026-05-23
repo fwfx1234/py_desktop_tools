@@ -249,29 +249,27 @@ def create_runtime():
 
 ---
 
-## 8.6 多 Manifest 共享 Runtime
+## 8.6 插件目录与 Manifest
 
-一个目录可以放多个 Manifest 文件，共享同一份 Runtime 代码：
+框架支持一个目录放多个 Manifest 文件并共享 Runtime 代码。当前自带插件优先保持一个插件一个目录，目录名使用插件 id 的 snake_case 形式：
 
 ```
-src/features/system/
-├── system-settings.plugin.json    # id: "system-settings"
-├── about.plugin.json              # id: "about"
-├── runtime.py                     # 两个插件共享
+src/features/system_settings/
+├── plugin.json                    # id: "system-settings"
+├── runtime.py
 ├── SystemSettingsPage.qml
+└── view_model.py
+
+src/features/about/
+├── plugin.json                    # id: "about"
+├── runtime.py
 └── AboutPage.qml
 ```
 
 ```python
 # runtime.py
 def create_runtime():
-    return SimpleQmlRuntime(lambda _ctx: None)  # system 页面不需要 ViewModel
-
-def create_settings_runtime():
     return SimpleQmlRuntime(lambda _ctx: SystemSettingsViewModel())
-
-def create_about_runtime():
-    return SimpleQmlRuntime(lambda _ctx: None)
 ```
 
 ---

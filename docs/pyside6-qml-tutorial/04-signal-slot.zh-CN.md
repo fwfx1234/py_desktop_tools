@@ -106,7 +106,7 @@ bridge.pluginInputEdited.connect(on_plugin_input_edited)
 
 ```qml
 Connections {
-    target: apiTestVm
+    target: apiDebuggerVm
     function onApiResponseReady(title, bodyText, details) {
         // Python 发出 apiResponseReady.emit(title, body, details)
         // QML 自动调用 onApiResponseReady，参数自动对应
@@ -156,7 +156,7 @@ launcherBridge.performSearch(text)
 launcherBridge.launchItem(itemId, "plugin")
 
 // 调用有返回值的方法
-var result = apiTestVm.createCollectionNode(parentId, kind, name, "GET", "/new")
+var result = apiDebuggerVm.createCollectionNode(parentId, kind, name, "GET", "/new")
 ```
 
 ---
@@ -192,12 +192,12 @@ ListView 绑定到 searchResults（标记了 notify=searchCompleted）
 launcherBridge.performSearch(text)
 
 // 2. 读写 Property
-apiTestVm.currentEndpointTab = 0        // 设置
-var tab = apiTestVm.currentEndpointTab  // 读取
+apiDebuggerVm.currentEndpointTab = 0        // 设置
+var tab = apiDebuggerVm.currentEndpointTab  // 读取
 
 // 3. 绑定表达式（自动跟踪变化）
-text: apiTestVm.currentEndpointTab >= 0 ? "有标签页" : "无标签页"
-color: apiTestVm.requestSending ? "gray" : "blue"
+text: apiDebuggerVm.currentEndpointTab >= 0 ? "有标签页" : "无标签页"
+color: apiDebuggerVm.requestSending ? "gray" : "blue"
 ```
 
 ---

@@ -31,18 +31,21 @@ SessionState = PluginSessionState
 
 RetentionExpiredCallback = Callable[[str, SessionState], None]
 
+DEFAULT_PLUGIN_RETENTION_MS = 5 * 60 * 1000
+MIN_PLUGIN_RETENTION_MS = 1_000
+
 
 def _retention_interval_ms() -> int:
     """Read the retention interval from env for debugging, otherwise use 5 minutes."""
 
     raw = os.getenv("PY_DESKTOP_PLUGIN_RETENTION_MS", "").strip()
     if not raw:
-        return 300_000
+        return DEFAULT_PLUGIN_RETENTION_MS
     try:
         value = int(raw)
     except ValueError:
-        return 300_000
-    return max(1_000, value)
+        return DEFAULT_PLUGIN_RETENTION_MS
+    return max(MIN_PLUGIN_RETENTION_MS, value)
 
 
 @dataclass(slots=True)

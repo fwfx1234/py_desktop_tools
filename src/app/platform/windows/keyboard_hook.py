@@ -24,6 +24,7 @@ VK_CONTROL = 0x11
 VK_MENU = 0x12
 VK_LWIN = 0x5B
 VK_RWIN = 0x5C
+LLKHF_ALTDOWN = 0x20
 
 user32 = ctypes.WinDLL("user32", use_last_error=True)
 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -141,10 +142,14 @@ class LowLevelHotkeyHook:
             event = int(w_param)
             if event in {WM_KEYDOWN, WM_SYSKEYDOWN, WM_KEYUP, WM_SYSKEYUP}:
                 item = KBDLLHOOKSTRUCT.from_address(int(l_param))
-                self._handle_key_event(int(item.vkCode), event in {WM_KEYDOWN, WM_SYSKEYDOWN})
+                self._handle_key_event(
+                    int(item.vkCode),
+                    event in {WM_KEYDOWN, WM_SYSKEYDOWN},
+                    bool(int(item.flags) & LLKHF_ALTDOWN),
+                )
         return user32.CallNextHookEx(self._hook, n_code, w_param, l_param)
 
-    def _handle_key_event(self, vk_code: int, pressed: bool) -> None:
+    def _handle_key_event(self, vk_code: int, pressed: bool, alt_down: bool = False) -> None:
         modifier = _modifier_from_vk(vk_code)
         if modifier:
             with self._lock:
@@ -155,6 +160,8 @@ class LowLevelHotkeyHook:
         with self._lock:
             items = list(self._items.items())
             modifiers = self._pressed_modifiers | _current_modifiers()
+        if alt_down:
+            modifiers |= MOD_ALT
         interested = bool(modifier) or any(vk_code == parsed[1] for _, (parsed, _) in items)
         if interested:
             _log().debug(
@@ -173,7 +180,7 @@ class LowLevelHotkeyHook:
             return
         for key, (parsed, callback) in items:
             expected_modifiers, expected_key = parsed
-            if vk_code != expected_key or modifiers != expected_modifiers:
+            if vk_code != expected_key or (modifiers & expected_modifiers) != expected_modifiers:
                 if interested and pressed and vk_code == expected_key:
                     self._log_miss(key, expected_modifiers, expected_key, modifiers)
                 continue

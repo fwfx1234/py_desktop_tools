@@ -43,7 +43,7 @@
 3. src/app/launcher/LauncherWindow.qml  # 启动器 UI
 4. src/app/launcher/launcher_bridge.py  # QML↔Python 桥
 5. src/features/json_parser/         # 最简单的完整插件
-6. src/features/qr/                  # ViewModel+Service 分层
+6. src/features/qr_code/             # ViewModel+Service 分层
 7. src/features/clipboard/           # 后台插件
-8. src/features/api_test/            # 复杂全功能插件
+8. src/features/api_debugger/            # 复杂全功能插件
 ```
