@@ -125,18 +125,6 @@ class WinHotkeyManager(QObject):
         modifiers, virtual_key = parsed
         hwnd = self._hwnd or 0
         ctypes.set_last_error(0)
-        native_started_at = time.perf_counter()
-        result = user32.RegisterHotKey(
-            hwnd,
-            self._hotkey_id,
-            modifiers,
-            virtual_key,
-        )
-        native_elapsed_ms = int((time.perf_counter() - native_started_at) * 1000)
-        self._native_registered = bool(result)
-        self._registered_hwnd = hwnd if self._native_registered else 0
-        if not self._native_registered:
-            self._last_error = ctypes.get_last_error()
         fallback_elapsed_ms = 0
         if self._should_enable_fallback():
             fallback_started_at = time.perf_counter()
@@ -148,6 +136,23 @@ class WinHotkeyManager(QObject):
             fallback_elapsed_ms = int((time.perf_counter() - fallback_started_at) * 1000)
         else:
             self._fallback_registered = False
+        native_elapsed_ms = 0
+        if not self._fallback_registered:
+            native_started_at = time.perf_counter()
+            result = user32.RegisterHotKey(
+                hwnd,
+                self._hotkey_id,
+                modifiers,
+                virtual_key,
+            )
+            native_elapsed_ms = int((time.perf_counter() - native_started_at) * 1000)
+            self._native_registered = bool(result)
+            self._registered_hwnd = hwnd if self._native_registered else 0
+            if not self._native_registered:
+                self._last_error = ctypes.get_last_error()
+        else:
+            self._native_registered = False
+            self._registered_hwnd = 0
         self._registered = self._native_registered or self._fallback_registered
         log_register = _log().info if self._hotkey_id == HOTKEY_ID or self._fallback_registered or not self._registered else _log().debug
         log_register(

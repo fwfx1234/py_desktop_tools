@@ -98,6 +98,7 @@ class PluginManager:
             runtime = self._runtimes.pop(plugin_id, None)
         if runtime is not None:
             runtime.on_exit()
+            _unload_plugin_modules(plugin_id)
             self._log.debug("plugin.runtime.close", "关闭插件 runtime", pluginId=plugin_id)
 
     def close_all(self) -> None:
@@ -198,6 +199,14 @@ class PluginManager:
 
 def _safe_module_part(value: str) -> str:
     return "".join(ch if ch.isalnum() or ch == "_" else "_" for ch in value)
+
+
+def _unload_plugin_modules(plugin_id: str) -> None:
+    package_name = f"_py_desktop_plugin_{_safe_module_part(plugin_id)}"
+    prefix = f"{package_name}."
+    for module_name in list(sys.modules):
+        if module_name == package_name or module_name.startswith(prefix):
+            sys.modules.pop(module_name, None)
 
 
 def _ensure_plugin_packages(

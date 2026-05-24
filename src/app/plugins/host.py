@@ -376,7 +376,6 @@ class PluginHostService:
                 and surface.window is retained_window
             ):
                 surface.hidden_for_retention = True
-            self._release_window_surface(pid, window_id, retained_window)
             if self._on_retained_close is not None:
                 self._on_retained_close(pid, "window")
 

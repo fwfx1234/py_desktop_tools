@@ -19,6 +19,7 @@ Item {
     readonly property color textSubtle: Theme.token("color-text-secondary", dark)
     readonly property color successColor: Theme.token("color-success", dark)
     readonly property string appIndexStatus: !hasSettingsVm ? "应用索引不可用" : (systemSettingsVm.appScanRunning ? "正在后台重扫描应用" : ("已缓存应用：" + systemSettingsVm.appCount))
+    property string pluginRetentionDraft: hasSettingsVm ? String(systemSettingsVm.pluginWindowRetentionSeconds) : "300"
 
     function updateDiagnostics() {
         diagnostics = hasSettingsVm ? systemSettingsVm.diagnostics() : ({})
@@ -51,6 +52,97 @@ Item {
                         RadioButton { text: "跟随系统"; checked: hasApp && app.themeMode === "auto"; onClicked: if (hasApp) app.setTheme("auto") }
                     }
                     Label { text: "已启用本地数据存储"; color: textMuted }
+                }
+            }
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: Theme.space["3"] * 11
+                radius: Theme.radii.xl
+                color: panelBg
+                border.width: 1
+                border.color: panelBorder
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: Theme.space["3"]
+                    spacing: Theme.space["3"]
+
+                    Rectangle {
+                        Layout.preferredWidth: 42
+                        Layout.preferredHeight: 42
+                        Layout.alignment: Qt.AlignVCenter
+                        radius: Theme.radii.md
+                        color: Theme.token("color-primary-bg", dark)
+
+                        UiIcon {
+                            anchors.centerIn: parent
+                            width: 22
+                            height: 22
+                            name: "mdi6.timer-sand"
+                            color: Theme.token("color-primary", dark)
+                            iconSize: 22
+                        }
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        Layout.alignment: Qt.AlignVCenter
+                        spacing: 4
+
+                        Label { text: "插件窗口保留"; font.bold: true; color: textMain; font.family: Theme.fontFamily.ui }
+                        Label {
+                            text: hasSettingsVm ? systemSettingsVm.pluginWindowRetentionStatus : "窗口保留设置不可用"
+                            color: textMuted
+                            font.pixelSize: Theme.fontSize.body
+                            font.family: Theme.fontFamily.ui
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.alignment: Qt.AlignVCenter
+                        spacing: Theme.space["1"]
+
+                        UiTextField {
+                            id: retentionSecondsField
+                            Layout.preferredWidth: 86
+                            Layout.preferredHeight: 34
+                            dark: root.dark
+                            enabled: hasSettingsVm
+                            text: root.pluginRetentionDraft
+                            horizontalAlignment: TextInput.AlignHCenter
+                            validator: IntValidator { bottom: 1; top: 3600 }
+                            onEditingFinished: root.pluginRetentionDraft = text
+                        }
+
+                        Label {
+                            text: "秒"
+                            color: textMuted
+                            font.pixelSize: Theme.fontSize.body
+                            font.family: Theme.fontFamily.ui
+                        }
+
+                        UiButton {
+                            text: "保存"
+                            dark: root.dark
+                            variant: "secondary"
+                            implicitWidth: 70
+                            enabled: hasSettingsVm && retentionSecondsField.acceptableInput
+                            onClicked: {
+                                root.pluginRetentionDraft = String(systemSettingsVm.setPluginWindowRetentionSeconds(parseInt(retentionSecondsField.text)))
+                            }
+                        }
+
+                        UiButton {
+                            text: "恢复5分钟"
+                            dark: root.dark
+                            variant: "ghost"
+                            implicitWidth: 96
+                            enabled: hasSettingsVm
+                            onClicked: {
+                                root.pluginRetentionDraft = String(systemSettingsVm.restorePluginWindowRetentionDefault())
+                            }
+                        }
+                    }
                 }
             }
             Rectangle {
@@ -342,6 +434,9 @@ Item {
         target: hasSettingsVm ? systemSettingsVm : null
         function onPluginImportFinished(ok, message) {
             root.updateDiagnostics()
+        }
+        function onPluginSessionSettingsChanged() {
+            root.pluginRetentionDraft = String(systemSettingsVm.pluginWindowRetentionSeconds)
         }
     }
 

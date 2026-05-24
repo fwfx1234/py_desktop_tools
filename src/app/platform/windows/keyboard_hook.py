@@ -19,6 +19,7 @@ WM_KEYDOWN = 0x0100
 WM_KEYUP = 0x0101
 WM_SYSKEYDOWN = 0x0104
 WM_SYSKEYUP = 0x0105
+PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 VK_SHIFT = 0x10
 VK_CONTROL = 0x11
 VK_MENU = 0x12
@@ -30,8 +31,22 @@ user32 = ctypes.WinDLL("user32", use_last_error=True)
 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 user32.GetAsyncKeyState.restype = wintypes.SHORT
 user32.GetAsyncKeyState.argtypes = [wintypes.INT]
+user32.GetForegroundWindow.restype = wintypes.HWND
+user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
 kernel32.GetModuleHandleW.restype = wintypes.HMODULE
 kernel32.GetModuleHandleW.argtypes = [wintypes.LPCWSTR]
+kernel32.OpenProcess.restype = wintypes.HANDLE
+kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+kernel32.CloseHandle.restype = wintypes.BOOL
+kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+kernel32.QueryFullProcessImageNameW.restype = wintypes.BOOL
+kernel32.QueryFullProcessImageNameW.argtypes = [
+    wintypes.HANDLE,
+    wintypes.DWORD,
+    wintypes.LPWSTR,
+    ctypes.POINTER(wintypes.DWORD),
+]
 
 ULONG_PTR = wintypes.WPARAM
 LRESULT = wintypes.LPARAM
@@ -78,6 +93,7 @@ class LowLevelHotkeyHook:
         self._hook = None
         self._proc = LowLevelKeyboardProc(self._callback)
         self._last_miss_log: dict[int, float] = {}
+        self._last_suppressed_foreground_log: dict[str, float] = {}
 
     def add(self, key: int, parsed: tuple[int, int], callback: Callable[[], None]) -> bool:
         self._ensure_started()
@@ -142,14 +158,16 @@ class LowLevelHotkeyHook:
             event = int(w_param)
             if event in {WM_KEYDOWN, WM_SYSKEYDOWN, WM_KEYUP, WM_SYSKEYUP}:
                 item = KBDLLHOOKSTRUCT.from_address(int(l_param))
-                self._handle_key_event(
+                suppress = self._handle_key_event(
                     int(item.vkCode),
                     event in {WM_KEYDOWN, WM_SYSKEYDOWN},
                     bool(int(item.flags) & LLKHF_ALTDOWN),
                 )
+                if suppress:
+                    return 1
         return user32.CallNextHookEx(self._hook, n_code, w_param, l_param)
 
-    def _handle_key_event(self, vk_code: int, pressed: bool, alt_down: bool = False) -> None:
+    def _handle_key_event(self, vk_code: int, pressed: bool, alt_down: bool = False) -> bool:
         modifier = _modifier_from_vk(vk_code)
         if modifier:
             with self._lock:
@@ -177,13 +195,17 @@ class LowLevelHotkeyHook:
                 for key, (parsed, _) in items:
                     if vk_code == parsed[1] or modifier:
                         self._active.discard(key)
-            return
+            return False
         for key, (parsed, callback) in items:
             expected_modifiers, expected_key = parsed
             if vk_code != expected_key or (modifiers & expected_modifiers) != expected_modifiers:
                 if interested and pressed and vk_code == expected_key:
                     self._log_miss(key, expected_modifiers, expected_key, modifiers)
                 continue
+            foreground_exe = _foreground_process_name()
+            if _should_passthrough_foreground(foreground_exe):
+                self._log_suppressed_foreground(key, foreground_exe)
+                return False
             with self._lock:
                 if key in self._active:
                     _log().debug(
@@ -193,7 +215,7 @@ class LowLevelHotkeyHook:
                         virtualKey=vk_code,
                         modifiers=modifiers,
                     )
-                    continue
+                    return True
                 self._active.add(key)
             _log().info(
                 "hotkey.low_level_match",
@@ -203,6 +225,21 @@ class LowLevelHotkeyHook:
                 modifiers=modifiers,
             )
             callback()
+            return True
+        return False
+
+    def _log_suppressed_foreground(self, key: int, foreground_exe: str) -> None:
+        now = perf_counter()
+        last = self._last_suppressed_foreground_log.get(foreground_exe, 0.0)
+        if now - last < 1.0:
+            return
+        self._last_suppressed_foreground_log[foreground_exe] = now
+        _log().debug(
+            "hotkey.low_level_foreground_passthrough",
+            "前台窗口要求保留系统快捷键，低级键盘 hook 已放行",
+            hotkeyKey=key,
+            foregroundExe=foreground_exe,
+        )
 
     def _log_miss(self, key: int, expected_modifiers: int, expected_key: int, actual_modifiers: int) -> None:
         now = perf_counter()
@@ -247,6 +284,48 @@ def _modifier_from_vk(virtual_key: int) -> int:
     if virtual_key in {VK_LWIN, VK_RWIN}:
         return MOD_WIN
     return 0
+
+
+def _foreground_process_name() -> str:
+    hwnd = user32.GetForegroundWindow()
+    if not hwnd:
+        return ""
+    process_id = wintypes.DWORD()
+    user32.GetWindowThreadProcessId(hwnd, ctypes.byref(process_id))
+    if not process_id.value:
+        return ""
+    handle = kernel32.OpenProcess(
+        PROCESS_QUERY_LIMITED_INFORMATION,
+        False,
+        process_id.value,
+    )
+    if not handle:
+        return ""
+    try:
+        size = wintypes.DWORD(32768)
+        buffer = ctypes.create_unicode_buffer(size.value)
+        if not kernel32.QueryFullProcessImageNameW(
+            handle,
+            0,
+            buffer,
+            ctypes.byref(size),
+        ):
+            return ""
+        return buffer.value.rsplit("\\", 1)[-1].lower()
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def _should_passthrough_foreground(exe_name: str) -> bool:
+    if not exe_name:
+        return False
+    return exe_name.lower() in {
+        "taskmgr.exe",
+        "procexp.exe",
+        "procexp64.exe",
+        "procmon.exe",
+        "procmon64.exe",
+    }
 
 
 LOW_LEVEL_HOTKEY_HOOK = LowLevelHotkeyHook()

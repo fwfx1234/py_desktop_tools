@@ -26,6 +26,7 @@ from app.plugins.host import PluginHostService
 from app.plugins.plugin_manager import PluginManager
 from app.plugins.runtime import PluginContext
 from app.plugins.session_manager import PluginSessionManager
+from app.runtime_memory import RuntimeMemoryCleaner
 from app.storage import StorageManager
 from app.tray.service import TrayService
 
@@ -56,6 +57,7 @@ class ApplicationContext:
     tray_service: TrayService
     launcher_window_controller: LauncherWindowController
     launcher_window: object | None = None
+    runtime_memory: RuntimeMemoryCleaner | None = None
     _shutting_down: bool = field(default=False, init=False)
     _app_index_refresh_timer: QTimer | None = field(default=None, init=False)
     _background_plugins_started: bool = field(default=False, init=False)
@@ -95,6 +97,8 @@ class ApplicationContext:
         self.plugin_manager.close_all()
         self.command_service.shutdown()
         self.command_index.close()
+        if self.runtime_memory is not None:
+            self.runtime_memory.run()
 
     def reload_plugins(self) -> list[PluginManifest]:
         manifests = load_all_plugin_manifests()

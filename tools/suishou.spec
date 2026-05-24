@@ -5,6 +5,8 @@ import os
 import sys
 from pathlib import Path
 
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
+
 # ── paths ────────────────────────────────────────────────────────────────────
 # The build script always runs PyInstaller from the project root.
 PROJECT_ROOT = Path.cwd().resolve()
@@ -12,6 +14,9 @@ SRC = PROJECT_ROOT / "src"
 APP_ICON_DIR = PROJECT_ROOT / "assets" / "app_icon"
 MACOS_ICON = APP_ICON_DIR / "app_icon.icns"
 WINDOWS_ICON = APP_ICON_DIR / "app_icon.ico"
+
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
 
 if sys.platform == "darwin" and not MACOS_ICON.exists():
     raise FileNotFoundError(f"macOS app icon not found: {MACOS_ICON}")
@@ -45,6 +50,98 @@ icon_data = _walk_rel(SRC, "*.svg")
 web_assets = _walk_rel(SRC, "*.html", "*.css")
 qta_icon_data = _walk_rel(PROJECT_ROOT / "assets" / "qta_icons", "*.png", "*.json")
 
+def _safe_collect_submodules(package: str) -> list[str]:
+    try:
+        return collect_submodules(package, filter=_is_runtime_module)
+    except Exception:
+        return []
+
+
+def _is_runtime_module(module_name: str) -> bool:
+    parts = module_name.split(".")
+    return not any(part in {"tests", "__pyinstaller", "_pyinstaller"} for part in parts)
+
+
+def _safe_collect_data_files(package: str) -> list[tuple[str, str]]:
+    try:
+        return collect_data_files(package)
+    except Exception:
+        return []
+
+
+def _safe_copy_metadata(package: str) -> list[tuple[str, str]]:
+    try:
+        return copy_metadata(package)
+    except Exception:
+        return []
+
+
+PROJECT_HIDDEN_IMPORT_PACKAGES = [
+    "app",
+    "features",
+]
+
+# Bundled feature runtimes are loaded from manifest paths at runtime, so
+# PyInstaller cannot infer their transitive imports from the entry script.
+FEATURE_HIDDEN_IMPORT_PACKAGES = [
+    "asyncio",
+    "email",
+    "html",
+    "http",
+    "PIL",
+    "qrcode",
+    "requests",
+    "urllib",
+    "websocket",
+    "xml",
+    "yaml",
+    "mitmproxy",
+    "mitmproxy_rs",
+    "paramiko",
+    "pyperclip",
+    "pypinyin",
+    "zxingcpp",
+]
+
+FEATURE_DATA_PACKAGES = [
+    "certifi",
+    "mitmproxy",
+    "mitmproxy_rs",
+    "qrcode",
+]
+
+FEATURE_METADATA_PACKAGES = [
+    "certifi",
+    "mitmproxy",
+    "mitmproxy_rs",
+    "Pillow",
+    "qrcode",
+    "requests",
+    "websocket-client",
+    "PyYAML",
+]
+
+if sys.platform == "darwin":
+    FEATURE_HIDDEN_IMPORT_PACKAGES += ["mitmproxy_macos"]
+    FEATURE_DATA_PACKAGES += ["mitmproxy_macos"]
+    FEATURE_METADATA_PACKAGES += ["mitmproxy_macos"]
+elif sys.platform == "win32":
+    FEATURE_HIDDEN_IMPORT_PACKAGES += ["mitmproxy_windows", "pylnk3"]
+    FEATURE_DATA_PACKAGES += ["mitmproxy_windows"]
+    FEATURE_METADATA_PACKAGES += ["mitmproxy_windows", "pylnk3"]
+else:
+    FEATURE_HIDDEN_IMPORT_PACKAGES += ["mitmproxy_linux"]
+    FEATURE_DATA_PACKAGES += ["mitmproxy_linux"]
+    FEATURE_METADATA_PACKAGES += ["mitmproxy_linux"]
+
+package_data = []
+for package in FEATURE_DATA_PACKAGES:
+    package_data += _safe_collect_data_files(package)
+
+metadata_data = []
+for package in FEATURE_METADATA_PACKAGES:
+    metadata_data += _safe_copy_metadata(package)
+
 # ── hidden imports ───────────────────────────────────────────────────────────
 # PySide6 / Qt
 HIDDEN_IMPORTS = [
@@ -66,16 +163,18 @@ HIDDEN_IMPORTS = [
     "app.platform.common",
     "app.platform.macos",
     "app.platform.noop",
-    "app.diagnostics",
-    "app.diagnostics.memory",
     "app.plugins",
-    "app.webengine",
     "app.services.clipboard",
     "app.services.clipboard.backends",
     "app.storage",
     "app.tray",
     "features",
 ]
+
+for package in PROJECT_HIDDEN_IMPORT_PACKAGES + FEATURE_HIDDEN_IMPORT_PACKAGES:
+    HIDDEN_IMPORTS += _safe_collect_submodules(package)
+
+HIDDEN_IMPORTS = sorted(set(HIDDEN_IMPORTS))
 
 # Platform-specific
 if sys.platform == "darwin":
@@ -95,7 +194,7 @@ EXCLUDE_IMPORTS = [
 ]
 
 # ── datas ────────────────────────────────────────────────────────────────────
-DATAS = qml_data + manifest_data + plugin_python_data + icon_data + web_assets + qta_icon_data
+DATAS = qml_data + manifest_data + plugin_python_data + icon_data + web_assets + qta_icon_data + package_data + metadata_data
 
 # ── block cipher (optional) ──────────────────────────────────────────────────
 BLOCK_CIPHER_KEY = None

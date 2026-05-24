@@ -8,6 +8,13 @@ from PySide6.QtCore import QObject, Property, Signal, Slot
 from app.paths import data_dir
 from app.platform.models import PlatformResult
 from app.plugins.manifest_loader import load_all_plugin_manifests
+from app.plugins.session_settings import (
+    STANDARD_PLUGIN_WINDOW_RETENTION_MS,
+    plugin_window_retention_seconds,
+    restore_standard_plugin_window_retention,
+    set_plugin_window_retention_seconds,
+)
+from app.storage import StorageManager
 
 
 class SystemSettingsViewModel(QObject):
@@ -15,6 +22,7 @@ class SystemSettingsViewModel(QObject):
     permissionsChanged = Signal()
     pluginImportChanged = Signal()
     pluginImportFinished = Signal(bool, str)
+    pluginSessionSettingsChanged = Signal()
 
     def __init__(
         self,
@@ -23,6 +31,7 @@ class SystemSettingsViewModel(QObject):
         plugin_importer: object | None = None,
         imported_plugin_root: object | None = None,
         file_manager: object | None = None,
+        storage: object | None = None,
     ) -> None:
         super().__init__()
         self._command_service = command_service
@@ -30,6 +39,7 @@ class SystemSettingsViewModel(QObject):
         self._plugin_importer = plugin_importer
         self._imported_plugin_root = imported_plugin_root
         self._file_manager = file_manager
+        self._storage = storage if isinstance(storage, StorageManager) else None
         self._last_plugin_import_message = "支持导入插件目录或 .zip 插件包"
         self._last_plugin_import_ok = False
         self._disposed = False
@@ -82,6 +92,37 @@ class SystemSettingsViewModel(QObject):
     @Property(bool, notify=pluginImportChanged)
     def pluginImportOk(self) -> bool:
         return self._last_plugin_import_ok
+
+    @Property(int, notify=pluginSessionSettingsChanged)
+    def pluginWindowRetentionSeconds(self) -> int:
+        return plugin_window_retention_seconds(self._storage)
+
+    @Property(str, notify=pluginSessionSettingsChanged)
+    def pluginWindowRetentionStatus(self) -> str:
+        seconds = self.pluginWindowRetentionSeconds
+        if seconds < 60:
+            return f"窗口关闭后保留 {seconds} 秒"
+        minutes = seconds // 60
+        remain = seconds % 60
+        if remain:
+            return f"窗口关闭后保留 {minutes} 分 {remain} 秒"
+        return f"窗口关闭后保留 {minutes} 分钟"
+
+    @Slot(int, result=int)
+    def setPluginWindowRetentionSeconds(self, seconds: int) -> int:
+        value_ms = set_plugin_window_retention_seconds(self._storage, seconds)
+        self.pluginSessionSettingsChanged.emit()
+        return max(1, round(value_ms / 1000))
+
+    @Slot(result=int)
+    def restorePluginWindowRetentionDefault(self) -> int:
+        value_ms = restore_standard_plugin_window_retention(self._storage)
+        self.pluginSessionSettingsChanged.emit()
+        return max(1, round(value_ms / 1000))
+
+    @Property(int, constant=True)
+    def standardPluginWindowRetentionSeconds(self) -> int:
+        return round(STANDARD_PLUGIN_WINDOW_RETENTION_MS / 1000)
 
     @Property(str, notify=pluginImportChanged)
     def importedPluginRoot(self) -> str:

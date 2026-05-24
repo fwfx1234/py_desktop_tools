@@ -68,8 +68,6 @@ Window {
     onVisibleChanged: {
         if (visible) {
             pageLoader.active = qmlPage.length > 0
-        } else if (retainOnClose) {
-            pageLoader.active = false
         }
     }
 

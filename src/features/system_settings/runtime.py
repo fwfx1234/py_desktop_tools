@@ -13,5 +13,6 @@ def create_runtime() -> SimpleQmlRuntime:
             ctx.services.plugin_importer,
             ctx.services.imported_plugin_root,
             ctx.platform,
+            ctx.services.storage,
         )
     )

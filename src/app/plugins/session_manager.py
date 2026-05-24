@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -25,27 +24,13 @@ from app.plugins.session_state import (
     reactivate_state,
     retained_state,
 )
+from app.plugins.session_settings import plugin_window_retention_ms
 
 
 SessionState = PluginSessionState
 
 RetentionExpiredCallback = Callable[[str, SessionState], None]
-
-DEFAULT_PLUGIN_RETENTION_MS = 5 * 60 * 1000
-MIN_PLUGIN_RETENTION_MS = 1_000
-
-
-def _retention_interval_ms() -> int:
-    """Read the retention interval from env for debugging, otherwise use 5 minutes."""
-
-    raw = os.getenv("PY_DESKTOP_PLUGIN_RETENTION_MS", "").strip()
-    if not raw:
-        return DEFAULT_PLUGIN_RETENTION_MS
-    try:
-        value = int(raw)
-    except ValueError:
-        return DEFAULT_PLUGIN_RETENTION_MS
-    return max(MIN_PLUGIN_RETENTION_MS, value)
+MemoryCleanupCallback = Callable[[str], None]
 
 
 @dataclass(slots=True)
@@ -81,9 +66,12 @@ class PluginSessionManager:
         self._plugin_manager = plugin_manager
         self._plugin_context = plugin_context
         self._on_retention_expired = on_retention_expired
-        self._retention_ms = _retention_interval_ms()
+        self._memory_cleanup: MemoryCleanupCallback | None = None
         self._sessions: dict[str, ManagedPluginSession] = {}
         self._log = get_logger("app.plugins.session_manager")
+
+    def set_memory_cleanup(self, callback: MemoryCleanupCallback | None) -> None:
+        self._memory_cleanup = callback
 
     def get_manifest(self, plugin_id: str) -> PluginManifest | None:
         return self._plugin_manager.get_manifest(plugin_id)
@@ -98,6 +86,9 @@ class PluginSessionManager:
 
     def has_session(self, plugin_id: str) -> bool:
         return plugin_id in self._sessions
+
+    def has_sessions(self) -> bool:
+        return bool(self._sessions)
 
     def can_reuse_plugin(
         self,
@@ -290,7 +281,8 @@ class PluginSessionManager:
                 lambda pid=plugin_id: self._handle_retention_timeout(pid)
             )
             record.retain_timer = timer
-        timer.start(self._retention_ms)
+        retention_ms = plugin_window_retention_ms(self._plugin_context.services.storage)
+        timer.start(retention_ms)
         self._log.debug(
             "plugin.session.suspend",
             "挂起插件会话",
@@ -298,7 +290,7 @@ class PluginSessionManager:
             sessionId=record.session_id,
             host=host,
             state=record.state,
-            retentionMs=self._retention_ms,
+            retentionMs=retention_ms,
         )
 
     def unload_plugin(self, plugin_id: str) -> None:
@@ -329,6 +321,8 @@ class PluginSessionManager:
         elif manifest is not None and manifest.context_property:
             self._qml_context.setContextProperty(manifest.context_property, None)
         self._plugin_manager.close_runtime(plugin_id)
+        if self._memory_cleanup is not None:
+            self._memory_cleanup(f"plugin-unload:{plugin_id}")
 
     def close_all(self) -> None:
         for plugin_id in list(self._sessions):

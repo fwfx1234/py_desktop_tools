@@ -228,7 +228,7 @@ Window {
         var host = ensureInlineHost(pluginId, page);
         hideAllInlineHosts(pluginId);
         host.visible = true;
-        host.forceActiveFocus();
+        searchInput.forceActiveFocus();
     }
 
     function retainInlineHost(pluginId) {
@@ -427,6 +427,7 @@ Window {
 
                         TextField {
                             id: searchInput
+                            objectName: "launcherSearchInput"
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             placeholderText: "搜索功能或打开应用..."

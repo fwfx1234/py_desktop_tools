@@ -24,6 +24,7 @@ from app.plugins.plugin_manager import PluginManager
 from app.plugins.runtime import PluginContext
 from app.plugins.service_registry import ServiceRegistry
 from app.plugins.session_manager import PluginSessionManager
+from app.runtime_memory import RuntimeMemoryCleaner
 from app.qta_icon_provider import QtAwesomeImageProvider
 from app.paths import resource_root
 from app.plugins.importer import import_plugin_package, imported_plugin_root
@@ -152,6 +153,12 @@ class ApplicationBootstrapper:
             launcher_window=launcher_window,
             on_retained_close=on_retained_close,
         )
+        runtime_memory = RuntimeMemoryCleaner(
+            engine,
+            self._qt_app,
+            can_clear_component_cache=lambda: not session_manager.has_sessions(),
+        )
+        session_manager.set_memory_cleanup(runtime_memory.schedule)
         app_controller = ApplicationController(
             session_manager=session_manager,
             plugin_host=plugin_host,
@@ -214,6 +221,7 @@ class ApplicationBootstrapper:
             tray_service=tray_service,
             launcher_window_controller=launcher_window_controller,
             launcher_window=launcher_window,
+            runtime_memory=runtime_memory,
         )
         context_ref["context"] = app_context
         return app_context
